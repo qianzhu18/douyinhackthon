@@ -68,6 +68,33 @@ function completeLookup(result, fallback) {
   return validLookup(completed) ? completed : null;
 }
 
+const FALLBACK_MEANINGS = {
+  horse: "马", grassland: "草原", mountain: "山", slope: "山坡", pastoral: "田园的；牧区的",
+  scene: "场景", setting: "环境；场景", indoor: "室内的", outdoor: "室外的", coffee: "咖啡",
+  machine: "机器", barista: "咖啡师", laptop: "笔记本电脑", bottle: "瓶子", water: "水",
+  wooden: "木制的", shelving: "置物架", preparing: "准备；制作", drinks: "饮料", uses: "使用"
+};
+
+function fallbackLookup({ term, sentence, sentenceTranslation, language }) {
+  const normalized = String(term || "").trim().toLowerCase();
+  const meaning = language === "en"
+    ? (FALLBACK_MEANINGS[normalized] || `例句中的“${term}”`)
+    : `例句中的“${term}”`;
+  const example = language === "en"
+    ? `${term} appears in this scene.`
+    : `${term} ${language === "ja" ? "がこの場面に出てきます。" : "이 장면에 나옵니다."}`;
+  return {
+    word: term,
+    normalized: normalized || term,
+    phonetic: "Tap the speaker to listen",
+    meaning,
+    part_of_speech: "context word",
+    example,
+    translation: sentenceTranslation || (sentence ? `原句：${sentence}` : `这是“${term}”在画面例句中的用法。`),
+    fallback: true
+  };
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") return json(res, 405, { error: "仅支持 POST 请求" });
   const identity = await authenticate(req, res);
@@ -130,7 +157,7 @@ module.exports = async function handler(req, res) {
       try { payload = JSON.parse(responseText); } catch { payload = null; }
       if (!response.ok) {
         if (response.status === 429) return json(res, 429, { error: "查词请求较多，请稍后再试" });
-        if (attempt === 1) return json(res, 502, { error: "暂时没有查到这个词" });
+        if (attempt === 1) return json(res, 200, fallbackLookup({ term, sentence, sentenceTranslation, language }));
         continue;
       }
       const result = completeLookup(
@@ -139,10 +166,8 @@ module.exports = async function handler(req, res) {
       );
       if (result) return json(res, 200, result);
     }
-    return json(res, 502, { error: "暂时没有查到这个词" });
+    return json(res, 200, fallbackLookup({ term, sentence, sentenceTranslation, language }));
   } catch (error) {
-    return json(res, 500, {
-      error: error?.name === "TimeoutError" ? "查词超时，请再试一次" : "句中查词暂时不可用"
-    });
+    return json(res, 200, fallbackLookup({ term, sentence, sentenceTranslation, language }));
   }
 };

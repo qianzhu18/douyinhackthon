@@ -29,6 +29,7 @@ const STORAGE_ACCESS = "frame-language-access";
 const STORAGE_LEVEL = "frame-language-level";
 const STORAGE_BLACKLIST = "frame-language-blacklist";
 const STORAGE_SESSION = "frame-language-supabase-session-v1";
+const STORAGE_LIBRARY_CACHE = "frame-language-library-cache-v1";
 const STORAGE_SOUND = "frame-language-ambient-sound";
 const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
 
@@ -154,6 +155,43 @@ function saveSession(session) {
   localStorage.setItem(STORAGE_SESSION, JSON.stringify(session));
 }
 
+// The anonymous Supabase refresh token is the device-bound learning identity.
+// Keep a small local mirror as well: it makes a transient Auth/network outage
+// non-destructive and lets the library feel continuous while it reconnects.
+function currentSessionUserId() {
+  return String(learningSession?.user?.id || "");
+}
+
+function readLibraryCache() {
+  try {
+    const cache = JSON.parse(localStorage.getItem(STORAGE_LIBRARY_CACHE) || "null");
+    return Array.isArray(cache?.words) ? cache : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistLibraryCache() {
+  const words = libraryWords.slice(0, 500);
+  localStorage.setItem(STORAGE_LIBRARY_CACHE, JSON.stringify({
+    userId: currentSessionUserId(),
+    savedAt: Date.now(),
+    words,
+    dueWords
+  }));
+}
+
+function restoreLibraryCache() {
+  const cache = readLibraryCache();
+  if (!cache) return false;
+  const activeUserId = currentSessionUserId();
+  if (activeUserId && cache.userId && cache.userId !== activeUserId) return false;
+  libraryWords = cache.words;
+  dueWords = Array.isArray(cache.dueWords) ? cache.dueWords : [];
+  updateLibraryUI();
+  return libraryWords.length > 0;
+}
+
 async function loadSupabaseConfig() {
   if (supabaseConfig?.supabaseUrl && supabaseConfig?.publishableKey) return supabaseConfig;
   const configResponse = await fetch("/api/client-config");
@@ -188,7 +226,13 @@ async function refreshLearningSession(refreshToken) {
     body: JSON.stringify({ refresh_token: refreshToken })
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok || !payload.access_token) throw new Error("学习账户续期失败");
+  if (!response.ok || !payload.access_token) {
+    const error = new Error("学习账户续期失败");
+    // Only discard a device identity when Supabase explicitly says its token is
+    // invalid. A timeout/5xx must not silently create a new anonymous user.
+    error.permanentSessionFailure = [400, 401, 403].includes(response.status);
+    throw error;
+  }
   saveSession(payload);
   return payload;
 }
@@ -213,8 +257,13 @@ async function ensureLearningSession() {
       if (cached?.refresh_token) {
         try {
           return await refreshLearningSession(cached.refresh_token);
-        } catch {
-          localStorage.removeItem(STORAGE_SESSION);
+        } catch (error) {
+          if (error?.permanentSessionFailure) {
+            localStorage.removeItem(STORAGE_SESSION);
+          } else {
+            learningSession = cached;
+            throw new Error("学习账户暂时无法连接；已保留本机词库，网络恢复后会自动找回");
+          }
         }
       }
       try {
@@ -697,6 +746,7 @@ async function saveContextLookup() {
     if (!response.ok) throw new Error(payload.error || "保存到帧词库失败");
     libraryWords = [payload.word, ...libraryWords.filter((word) => `${word.language}:${word.concept}` !== contextWordKey(item))];
     reviewTarget = payload.word;
+    persistLibraryCache();
     updateLibraryUI();
     updateContextSaveButton();
     showToast(`已把 “${item.text}” 和原句一起收藏`);
@@ -881,6 +931,7 @@ async function toggleSaveWord() {
     if (!response.ok) throw new Error(payload.error || "保存到帧词库失败");
     libraryWords = [payload.word, ...libraryWords.filter((item) => `${item.language}:${item.concept}` !== wordKey(savingItem))];
     reviewTarget = payload.word;
+    persistLibraryCache();
     updateLibraryUI();
     updateSaveButton();
     showToast("已加入帧词库，马上用这段画面复习一次");
@@ -914,12 +965,16 @@ async function loadLibrary() {
     if (!libraryResponse.ok) throw new Error(libraryPayload.error || "词库加载失败");
     libraryWords = libraryPayload.words || [];
     dueWords = dueResponse.ok ? duePayload.words || [] : [];
+    persistLibraryCache();
     setLibraryState("ready");
     updateLibraryUI();
   } catch (error) {
-    setLibraryState("error");
-    $("#libraryList").innerHTML = "";
-    $("#libraryEmpty").hidden = true;
+    const recovered = restoreLibraryCache();
+    setLibraryState(recovered ? "cached" : "error");
+    if (!recovered) {
+      $("#libraryList").innerHTML = "";
+      $("#libraryEmpty").hidden = true;
+    }
   }
 }
 
@@ -930,11 +985,15 @@ function setLibraryState(state) {
     return;
   }
   stateCard.hidden = false;
-  $("#retryLibrary").hidden = state !== "error";
-  $("#libraryStateTitle").textContent = state === "error" ? "帧词库暂时没加载出来" : "正在加载帧词库";
+  $("#retryLibrary").hidden = state === "loading";
+  $("#libraryStateTitle").textContent = state === "error"
+    ? "帧词库暂时没加载出来"
+    : state === "cached" ? "正在显示本机词库备份" : "正在加载帧词库";
   $("#libraryStateMessage").textContent = state === "error"
     ? "你的识别结果还在。检查网络后可以直接重试，不需要重新识别。"
-    : "正在找回你收藏过的画面和表达。";
+    : state === "cached"
+      ? "云端暂时不可达；本机已保存的词卡仍可查看，恢复网络后点此重新同步。"
+      : "正在找回你收藏过的画面和表达。";
 }
 
 function updateLibraryUI() {
@@ -1018,6 +1077,7 @@ async function submitReview(action) {
     $("#reviewResult").hidden = false;
     dueWords = dueWords.filter((word) => word.id !== reviewTarget.id);
     libraryWords = libraryWords.map((word) => word.id === reviewTarget.id ? { ...word, ...payload.word } : word);
+    persistLibraryCache();
     updateLibraryUI();
   } catch (error) {
     showToast("复习结果暂时没保存，请再试一次");
@@ -1268,9 +1328,11 @@ $$("#levelMenu button").forEach((button) => {
 });
 updateBlacklistUI();
 updateTimeline();
+restoreLibraryCache();
 ensureLearningSession().then(() => loadLibrary()).catch(() => {
-  $("#libraryCount").textContent = "!";
-  setLibraryState("error");
+  const recovered = restoreLibraryCache();
+  $("#libraryCount").textContent = recovered ? libraryWords.length : "!";
+  setLibraryState(recovered ? "cached" : "error");
 });
 document.addEventListener("pointerdown", () => startAmbient().catch(() => {}), { once: true, capture: true });
 window.addEventListener("pagehide", stopCamera);

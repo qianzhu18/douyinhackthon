@@ -64,6 +64,25 @@ function validResult(result) {
     && result.tags.every((tag) => typeof tag === "string" && tag.length <= 100);
 }
 
+function fallbackDetail({ language, item }) {
+  const text = String(item?.text || "this expression").trim();
+  const meaning = String(item?.meaning || "这个表达").trim();
+  const isPhrase = String(item?.kind || "") === "phrase";
+  if (language === "ja") {
+    return { phonetic: "システム音声で確認", context: `${text} がこの場面に出てきます。`, translation: `这帧画面里出现了“${meaning}”。`, tags: [text, "scene vocabulary", "visual learning"], fallback: true };
+  }
+  if (language === "ko") {
+    return { phonetic: "시스템 음성으로 확인", context: `${text}이(가) 이 장면에 나옵니다.`, translation: `这帧画面里出现了“${meaning}”。`, tags: [text, "scene vocabulary", "visual learning"], fallback: true };
+  }
+  return {
+    phonetic: "Tap the speaker to listen",
+    context: isPhrase ? `This scene is about ${text}.` : `This scene includes ${text}.`,
+    translation: `这帧画面里出现了“${meaning}”。`,
+    tags: [text, `learn ${text}`, "visual vocabulary"],
+    fallback: true
+  };
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") return json(res, 405, { error: "仅支持 POST 请求" });
   const identity = await authenticate(req, res);
@@ -125,21 +144,18 @@ module.exports = async function handler(req, res) {
     try { payload = JSON.parse(responseText); } catch { payload = responseText; }
     if (!response.ok) {
       console.error("stepfun detail upstream error", response.status);
-      return json(res, response.status === 429 ? 429 : 502, {
-        error: response.status === 429 ? "详情生成请求较多，请稍后再试" : "词条详情暂时没有生成出来"
-      });
+      if (response.status === 429) return json(res, 429, { error: "详情生成请求较多，请稍后再试" });
+      return json(res, 200, fallbackDetail({ language, item }));
     }
     const outputText = payload?.choices?.[0]?.message?.content;
     const result = parseModelJson(outputText);
     if (!validResult(result)) {
       console.error("stepfun detail invalid result", payload?.choices?.[0]?.finish_reason || "unknown");
-      return json(res, 502, { error: "词条详情暂时没有生成出来" });
+      return json(res, 200, fallbackDetail({ language, item }));
     }
     return json(res, 200, result);
   } catch (error) {
     console.error("stepfun detail error", error);
-    return json(res, 500, {
-      error: error?.name === "TimeoutError" ? "详情生成超时，请稍后重试" : "详情生成暂时不可用"
-    });
+    return json(res, 200, fallbackDetail({ language, item }));
   }
 };
