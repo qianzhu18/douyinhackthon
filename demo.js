@@ -26,9 +26,9 @@ const kindLabels = {
   phrase: "PHRASE · 场景表达"
 };
 const STORAGE_ACCESS = "frame-language-access";
-const STORAGE_WORDS = "frame-language-words";
 const STORAGE_LEVEL = "frame-language-level";
 const STORAGE_BLACKLIST = "frame-language-blacklist";
+const STORAGE_SESSION = "frame-language-supabase-session-v1";
 const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
 
 let currentLang = "en";
@@ -41,11 +41,23 @@ let frameHistory = [];
 let mediaSession = 0;
 let objectUrl = null;
 let cameraStream = null;
+let cameraFacing = "environment";
+let cameraSwitching = false;
 let mediaMode = "sample";
 let isPaused = false;
 let isAnalyzing = false;
 let requestToken = 0;
 let pendingAction = null;
+let supabaseConfig = null;
+let learningSession = null;
+let accountReady = null;
+let libraryWords = [];
+let dueWords = [];
+let reviewTarget = null;
+
+function getLegacyAccessCode() {
+  return localStorage.getItem(STORAGE_ACCESS) || "";
+}
 
 const levelConfig = {
   beginner: { label: "A1–A2", name: "基础" },
@@ -67,55 +79,112 @@ function formatTime(seconds) {
   return `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
 }
 
-function getAccessCode() {
-  return localStorage.getItem(STORAGE_ACCESS) || "";
+function saveSession(session) {
+  learningSession = session;
+  localStorage.setItem(STORAGE_SESSION, JSON.stringify(session));
 }
 
-function setAuthenticated(code) {
-  localStorage.setItem(STORAGE_ACCESS, code);
-  $("#logoutButton").hidden = false;
+async function loadSupabaseConfig() {
+  if (supabaseConfig?.supabaseUrl && supabaseConfig?.publishableKey) return supabaseConfig;
+  const configResponse = await fetch("/api/client-config");
+  supabaseConfig = await configResponse.json().catch(() => ({}));
+  if (!configResponse.ok || !supabaseConfig.supabaseUrl || !supabaseConfig.publishableKey) {
+    throw new Error(supabaseConfig.error || "学习账户服务暂不可用");
+  }
+  return supabaseConfig;
 }
 
-function openAuth() {
-  $("#authModal").classList.add("open");
-  $("#authModal").setAttribute("aria-hidden", "false");
-  $("#authError").textContent = "";
-  $("#accessCode").value = getAccessCode();
-  setTimeout(() => $("#accessCode").focus(), 80);
-}
-
-function closeAuth() {
-  $("#authModal").classList.remove("open");
-  $("#authModal").setAttribute("aria-hidden", "true");
-}
-
-async function verifyAccess(code) {
-  const response = await fetch("/api/auth", {
+async function startAnonymousSession() {
+  await loadSupabaseConfig();
+  const response = await fetch(`${supabaseConfig.supabaseUrl}/auth/v1/signup`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code })
+    headers: { apikey: supabaseConfig.publishableKey, "Content-Type": "application/json" },
+    body: JSON.stringify({})
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || `验证失败（${response.status}）`);
-  return true;
+  if (!response.ok || !payload.access_token) {
+    throw new Error("学习账户尚未开启。请在 Supabase Auth 打开 Anonymous Sign-ins 后重试。");
+  }
+  saveSession(payload);
+  return payload;
+}
+
+async function refreshLearningSession(refreshToken) {
+  if (!refreshToken) throw new Error("没有可续期的学习账户");
+  await loadSupabaseConfig();
+  const response = await fetch(`${supabaseConfig.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+    method: "POST",
+    headers: { apikey: supabaseConfig.publishableKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: refreshToken })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.access_token) throw new Error("学习账户续期失败");
+  saveSession(payload);
+  return payload;
+}
+
+async function ensureLearningSession() {
+  const now = Math.floor(Date.now() / 1000);
+  if (learningSession?.access_token && Number(learningSession.expires_at || 0) > now + 60) return learningSession;
+  if (learningSession?.refresh_token) {
+    learningSession = null;
+    accountReady = null;
+  }
+  if (!accountReady) {
+    accountReady = (async () => {
+      let cached = null;
+      try {
+        cached = JSON.parse(localStorage.getItem(STORAGE_SESSION) || "null");
+        if (cached?.access_token && Number(cached.expires_at || 0) > Math.floor(Date.now() / 1000) + 60) {
+          learningSession = cached;
+          return cached;
+        }
+      } catch { /* ignored */ }
+      if (cached?.refresh_token) {
+        try {
+          return await refreshLearningSession(cached.refresh_token);
+        } catch {
+          localStorage.removeItem(STORAGE_SESSION);
+        }
+      }
+      try {
+        return await startAnonymousSession();
+      } catch (error) {
+        // Do not break the already-working small-scope demo while an admin is
+        // enabling anonymous Auth. Legacy access remains analysis-only; the
+        // cloud library correctly continues to require a real user identity.
+        const code = getLegacyAccessCode();
+        if (code) return { legacy: true, accessCode: code };
+        throw error;
+      }
+    })().catch((error) => {
+      accountReady = null;
+      throw error;
+    });
+  }
+  return accountReady;
+}
+
+async function apiFetch(path, options = {}) {
+  const session = await ensureLearningSession();
+  if (session.legacy) {
+    return fetch(path, {
+      ...options,
+      headers: { "X-Access-Code": session.accessCode, ...(options.headers || {}) }
+    });
+  }
+  return fetch(path, {
+    ...options,
+    headers: { "Authorization": `Bearer ${session.access_token}`, ...(options.headers || {}) }
+  });
 }
 
 function requestUpload() {
-  if (!getAccessCode()) {
-    pendingAction = "upload";
-    openAuth();
-    return;
-  }
   mediaInput.click();
 }
 
 function requestCamera() {
-  if (!getAccessCode()) {
-    pendingAction = "camera";
-    openAuth();
-    return;
-  }
-  startCamera();
+  startCamera(cameraFacing);
 }
 
 function stopCamera() {
@@ -124,6 +193,35 @@ function stopCamera() {
     cameraStream = null;
   }
   if (sceneVideo.srcObject) sceneVideo.srcObject = null;
+  sceneVideo.classList.remove("front-camera");
+}
+
+async function requestCameraStream(facing) {
+  const video = {
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    facingMode: { exact: facing }
+  };
+  try {
+    return await navigator.mediaDevices.getUserMedia({ video, audio: false });
+  } catch (error) {
+    if (!["OverconstrainedError", "NotFoundError"].includes(error.name)) throw error;
+    return navigator.mediaDevices.getUserMedia({
+      video: { ...video, facingMode: { ideal: facing } },
+      audio: false
+    });
+  }
+}
+
+async function updateCameraControls() {
+  let videoInputs = [];
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    videoInputs = devices.filter((device) => device.kind === "videoinput");
+  } catch { /* switching remains hidden when devices cannot be enumerated */ }
+  $("#flipCamera").hidden = videoInputs.length < 2;
+  $("#cameraFacingLabel").textContent = `${cameraFacing === "user" ? "前置" : "后置"}镜头实时预览`;
+  sceneVideo.classList.toggle("front-camera", cameraFacing === "user");
 }
 
 function resetLearningState() {
@@ -176,10 +274,10 @@ function loadVideo(file) {
   };
 }
 
-async function startCamera() {
+async function startCamera(facing = "environment", restoring = false) {
   if (!navigator.mediaDevices?.getUserMedia) {
     showToast("当前浏览器或地址不支持摄像头");
-    return;
+    return false;
   }
   try {
     stopCamera();
@@ -187,14 +285,9 @@ async function startCamera() {
       URL.revokeObjectURL(objectUrl);
       objectUrl = null;
     }
-    cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-        facingMode: { ideal: "environment" }
-      },
-      audio: false
-    });
+    cameraStream = await requestCameraStream(facing);
+    const actualFacing = cameraStream.getVideoTracks()[0]?.getSettings?.().facingMode;
+    cameraFacing = ["user", "environment"].includes(actualFacing) ? actualFacing : facing;
     mediaSession++;
     mediaMode = "camera";
     resetLearningState();
@@ -211,13 +304,36 @@ async function startCamera() {
     $("#welcomeTip b").textContent = "摄像头模式已开启";
     $("#welcomeTip small").textContent = "点击画面或按空格冻结当前帧";
     await sceneVideo.play();
+    await updateCameraControls();
+    return true;
   } catch (error) {
     stopCamera();
+    if (!restoring && mediaMode === "camera") return startCamera(cameraFacing, true);
     const message = error.name === "NotAllowedError"
       ? "没有获得摄像头权限，请在浏览器设置中允许访问"
       : `摄像头启动失败：${error.message}`;
     showToast(message);
+    return false;
   }
+}
+
+async function switchCamera() {
+  if (cameraSwitching || mediaMode !== "camera") return;
+  cameraSwitching = true;
+  const previousFacing = cameraFacing;
+  const nextFacing = previousFacing === "environment" ? "user" : "environment";
+  $("#flipCamera").disabled = true;
+  $("#flipCamera").textContent = "切换中…";
+  const switched = await startCamera(nextFacing, true);
+  if (!switched) {
+    await startCamera(previousFacing, true);
+    showToast("这台设备暂时无法切换镜头");
+  } else {
+    showToast(`已切换到${cameraFacing === "user" ? "前置" : "后置"}镜头`);
+  }
+  $("#flipCamera").disabled = false;
+  $("#flipCamera").textContent = "↺ 切换镜头";
+  cameraSwitching = false;
 }
 
 function captureFrame() {
@@ -225,11 +341,13 @@ function captureFrame() {
   const width = source.naturalWidth || source.videoWidth;
   const height = source.naturalHeight || source.videoHeight;
   if (!width || !height) throw new Error("视频画面尚未准备好");
-  const scale = Math.min(1, 1024 / Math.max(width, height));
+  // The private vocabulary snapshot is capped at 1MB by Storage. 720px keeps
+  // the image useful as a visual cue while reliably fitting that product limit.
+  const scale = Math.min(1, 720 / Math.max(width, height));
   frameCanvas.width = Math.max(1, Math.round(width * scale));
   frameCanvas.height = Math.max(1, Math.round(height * scale));
   frameCanvas.getContext("2d").drawImage(source, 0, 0, frameCanvas.width, frameCanvas.height);
-  return frameCanvas.toDataURL("image/jpeg", .82);
+  return frameCanvas.toDataURL("image/jpeg", .74);
 }
 
 function findNearbyFrame(time) {
@@ -240,10 +358,7 @@ function findNearbyFrame(time) {
 
 async function pauseAndAnalyze() {
   if (isPaused || isAnalyzing) return;
-  if (!getAccessCode()) {
-    openAuth();
-    return;
-  }
+  try { await ensureLearningSession(); } catch (error) { showToast(error.message); return; }
   const time = mediaMode === "camera"
     ? Date.now() / 1000
     : sceneVideo.hidden ? 0 : sceneVideo.currentTime;
@@ -305,11 +420,10 @@ async function loadLanguageResult(force = false) {
   setAnalysisState("loading", `正在生成${languageConfig[currentLang].name}学习点…`);
   $("#learningCount").textContent = "AI 正在分析";
   try {
-    const response = await fetch("/api/analyze", {
+    const response = await apiFetch("/api/analyze", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        "X-Access-Code": getAccessCode()
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
         image: currentFrame.image,
@@ -320,10 +434,6 @@ async function loadLanguageResult(force = false) {
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
-        localStorage.removeItem(STORAGE_ACCESS);
-        $("#logoutButton").hidden = true;
-      }
       throw new Error(payload.error || payload.raw || `请求失败（${response.status}）`);
     }
     if (token !== requestToken || !isPaused) return;
@@ -349,6 +459,7 @@ function showAnalysisError(rawMessage) {
   isAnalyzing = false;
   setAnalysisState("error", rawMessage || "未知错误");
   $("#learningCount").textContent = "未能完成分析";
+  $("#retryAnalysis").textContent = "重新分析";
   $("#retryAnalysis").hidden = false;
 }
 
@@ -373,6 +484,8 @@ function renderResult(result) {
       openWordSheet(item);
     });
   });
+  $("#retryAnalysis").textContent = "重新识别这一帧";
+  $("#retryAnalysis").hidden = false;
 }
 
 async function openWordSheet(item) {
@@ -386,7 +499,9 @@ async function openWordSheet(item) {
   $("#collocations").innerHTML = item.detail
     ? item.detail.tags.map((tag) => `<button type="button">${escapeHtml(tag)}</button>`).join("")
     : "<button type=\"button\">生成常用搭配中…</button>";
-  $("#saveWord").disabled = !item.detail;
+  $("#retryDetail").hidden = true;
+  // Saving the visual word card must never depend on a second model call.
+  $("#saveWord").disabled = false;
   updateSaveButton();
   wordSheet.classList.add("open");
   wordSheet.setAttribute("aria-hidden", "false");
@@ -395,11 +510,10 @@ async function openWordSheet(item) {
   item.detailLoading = true;
   try {
     const result = currentFrame?.results[`${currentLang}:${currentLevel}`];
-    const response = await fetch("/api/detail", {
+    const response = await apiFetch("/api/detail", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        "X-Access-Code": getAccessCode()
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
         language: currentLang,
@@ -417,14 +531,15 @@ async function openWordSheet(item) {
     $("#translationText").textContent = payload.translation;
     $("#collocations").innerHTML = payload.tags
       .map((tag) => `<button type="button">${escapeHtml(tag)}</button>`).join("");
-    $("#saveWord").disabled = false;
+    $("#retryDetail").hidden = true;
     updateSaveButton();
-  } catch (error) {
+  } catch {
     if (currentItem === item) {
-      $("#phonetic").textContent = "详情生成失败";
-      $("#contextText").textContent = error.message;
-      $("#translationText").textContent = "再次点击该浮窗可以重试";
+      $("#phonetic").textContent = "详情稍后再试";
+      $("#contextText").textContent = "详细例句暂时没有生成出来，但不影响收藏这张帧词卡。";
+      $("#translationText").textContent = "你可以先加入词库，或点击下方重新生成。";
       $("#collocations").innerHTML = "";
+      $("#retryDetail").hidden = false;
     }
   } finally {
     item.detailLoading = false;
@@ -434,14 +549,7 @@ async function openWordSheet(item) {
 function closeWordSheet() {
   wordSheet.classList.remove("open");
   wordSheet.setAttribute("aria-hidden", "true");
-}
-
-function getSavedWords() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_WORDS) || "[]");
-  } catch {
-    return [];
-  }
+  currentItem = null;
 }
 
 function getBlacklist() {
@@ -510,42 +618,216 @@ function renderBlacklist() {
 }
 
 function wordKey(item = currentItem) {
-  return item ? `${currentLang}:${item.text.toLocaleLowerCase()}` : "";
+  return item ? `${item.language || currentLang}:${item.concept}` : "";
 }
 
 function updateSaveButton() {
-  const saved = getSavedWords().some((word) => word.key === wordKey());
+  const saved = libraryWords.some((word) => `${word.language}:${word.concept}` === wordKey());
   $("#saveWord").classList.toggle("saved", saved);
-  $("#saveWord").textContent = saved ? "✓ 已收藏" : "＋ 收藏";
+  $("#saveWord").textContent = saved ? "✓ 已在帧词库" : "＋ 加入帧词库";
 }
 
-function toggleSaveWord() {
+async function toggleSaveWord() {
   if (!currentItem) return;
-  const words = getSavedWords();
-  const key = wordKey();
-  const index = words.findIndex((word) => word.key === key);
-  if (index >= 0) {
-    words.splice(index, 1);
-    showToast("已取消收藏");
-  } else {
-    words.push({ key, language: currentLang, savedAt: Date.now(), ...currentItem, detailLoading: undefined });
-    showToast("已加入本地生词本");
+  const savingItem = currentItem;
+  if (libraryWords.some((word) => `${word.language}:${word.concept}` === wordKey(savingItem))) {
+    openLibrary();
+    return;
   }
-  localStorage.setItem(STORAGE_WORDS, JSON.stringify(words));
-  updateSaveButton();
+  $("#saveWord").disabled = true;
+  $("#saveWord").textContent = "正在收进词库…";
+  try {
+    const result = currentFrame?.results[`${currentLang}:${currentLevel}`];
+    const word = {
+      concept: savingItem.concept,
+      language: currentLang,
+      text: savingItem.text,
+      meaning: savingItem.meaning,
+      detail: { ...(savingItem.detail || {}), cefr: savingItem.cefr, kind: savingItem.kind }
+    };
+    const response = await apiFetch("/api/library", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        word,
+        source_summary: result?.summary?.zh || result?.summary?.target || "来自一帧暂停画面",
+        frame_image: currentFrame?.image
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "保存到帧词库失败");
+    libraryWords = [payload.word, ...libraryWords.filter((item) => `${item.language}:${item.concept}` !== wordKey(savingItem))];
+    reviewTarget = payload.word;
+    updateLibraryUI();
+    updateSaveButton();
+    showToast("已加入帧词库，马上用这段画面复习一次");
+    openLibrary(true);
+  } catch (error) {
+    showToast(error.message);
+    updateSaveButton();
+  } finally {
+    $("#saveWord").disabled = false;
+  }
 }
 
-function speakCurrentWord() {
-  if (!currentItem || !("speechSynthesis" in window)) {
+function formatReviewTime(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "等待复习";
+  const delta = date.getTime() - Date.now();
+  if (delta <= 0) return "今天待复习";
+  const days = Math.max(1, Math.ceil(delta / 86400000));
+  return `${days} 天后复习`;
+}
+
+async function loadLibrary() {
+  setLibraryState("loading");
+  try {
+    const [libraryResponse, dueResponse] = await Promise.all([
+      apiFetch("/api/library?limit=100"),
+      apiFetch("/api/review?limit=50")
+    ]);
+    const libraryPayload = await libraryResponse.json().catch(() => ({}));
+    const duePayload = await dueResponse.json().catch(() => ({}));
+    if (!libraryResponse.ok) throw new Error(libraryPayload.error || "词库加载失败");
+    libraryWords = libraryPayload.words || [];
+    dueWords = dueResponse.ok ? duePayload.words || [] : [];
+    setLibraryState("ready");
+    updateLibraryUI();
+  } catch (error) {
+    setLibraryState("error");
+    $("#libraryList").innerHTML = "";
+    $("#libraryEmpty").hidden = true;
+  }
+}
+
+function setLibraryState(state) {
+  const stateCard = $("#libraryState");
+  if (state === "ready") {
+    stateCard.hidden = true;
+    return;
+  }
+  stateCard.hidden = false;
+  $("#retryLibrary").hidden = state !== "error";
+  $("#libraryStateTitle").textContent = state === "error" ? "帧词库暂时没加载出来" : "正在加载帧词库";
+  $("#libraryStateMessage").textContent = state === "error"
+    ? "你的识别结果还在。检查网络后可以直接重试，不需要重新识别。"
+    : "正在找回你收藏过的画面和表达。";
+}
+
+function updateLibraryUI() {
+  $("#libraryCount").textContent = libraryWords.length;
+  $("#libraryTotal").textContent = libraryWords.length;
+  $("#dueCount").textContent = dueWords.length;
+  $("#sceneCount").textContent = new Set(libraryWords.map((word) => word.frame_path || word.created_at)).size;
+  $("#startReview").disabled = !dueWords.length && !reviewTarget;
+  $("#startReview").textContent = dueWords.length ? `复习今天的 ${dueWords.length} 张词卡` : reviewTarget ? "立即复习刚收藏的词卡" : "今天没有待复习的词卡";
+  $("#libraryEmpty").hidden = libraryWords.length > 0;
+  $("#libraryList").innerHTML = libraryWords.map((word) => `
+    <article class="library-card">
+      ${word.frame_url ? `<img src="${escapeHtml(word.frame_url)}" alt="${escapeHtml(word.text)} 对应画面" />` : "<div></div>"}
+      <div><b>${escapeHtml(word.text)}</b><small>${escapeHtml(word.meaning)} · ${escapeHtml(word.detail?.cefr || "帧词卡")}</small><small class="card-status">${formatReviewTime(word.review_due_at)}</small><button class="review-now" data-id="${word.id}">用这张卡复习</button></div>
+    </article>
+  `).join("");
+  $$(".review-now").forEach((button) => button.addEventListener("click", () => {
+    const word = libraryWords.find((item) => String(item.id) === button.dataset.id);
+    if (word) openReview(word);
+  }));
+}
+
+async function openLibrary(focusLatest = false) {
+  try { await ensureLearningSession(); } catch (error) { return showToast(error.message); }
+  $("#blacklistPanel").classList.remove("open");
+  $("#libraryPanel").classList.add("open");
+  $("#libraryPanel").setAttribute("aria-hidden", "false");
+  await loadLibrary();
+  if (focusLatest && reviewTarget) updateLibraryUI();
+}
+
+function closeLibrary() {
+  $("#libraryPanel").classList.remove("open");
+  $("#libraryPanel").setAttribute("aria-hidden", "true");
+}
+
+function openReview(word) {
+  reviewTarget = word;
+  $("#reviewImage").src = word.frame_url || currentFrame?.image || "/cafe-scene.jpg";
+  $("#reviewLevel").textContent = `${word.detail?.cefr || "FRAME WORD"} · ${word.detail?.kind || "表达"}`;
+  $("#reviewMeaning").textContent = word.source_summary?.text || word.meaning;
+  $("#reviewAnswer").textContent = "看着这段画面，你还记得怎么说吗？";
+  $("#reviewProgress").textContent = dueWords.some((item) => item.id === word.id) ? "今天的待复习卡" : "刚收藏，马上复习一次";
+  $(".review-actions").hidden = false;
+  $("#reviewResult").hidden = true;
+  $("#reviewPanel").classList.add("open");
+  $("#reviewPanel").setAttribute("aria-hidden", "false");
+}
+
+function closeReview() {
+  const completed = !$("#reviewResult").hidden;
+  $("#reviewPanel").classList.remove("open");
+  $("#reviewPanel").setAttribute("aria-hidden", "true");
+  if (completed) {
+    reviewTarget = null;
+    updateLibraryUI();
+  }
+}
+
+async function submitReview(action) {
+  if (!reviewTarget?.id) return;
+  $$(".review-actions button").forEach((button) => button.disabled = true);
+  try {
+    const response = await apiFetch("/api/review", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: reviewTarget.id, action })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "复习记录失败");
+    $("#reviewAnswer").textContent = reviewTarget.text;
+    $("#reviewFeedback").textContent = action === "remember"
+      ? `记住了：${reviewTarget.text}。这张画面会在 ${payload.next_review_in_days} 天后再次出现。`
+      : `答案是 ${reviewTarget.text}。没关系，这张画面明天会再来一次。`;
+    $(".review-actions").hidden = true;
+    $("#reviewResult").hidden = false;
+    dueWords = dueWords.filter((word) => word.id !== reviewTarget.id);
+    libraryWords = libraryWords.map((word) => word.id === reviewTarget.id ? { ...word, ...payload.word } : word);
+    updateLibraryUI();
+  } catch (error) {
+    showToast("复习结果暂时没保存，请再试一次");
+  } finally {
+    $$(".review-actions button").forEach((button) => button.disabled = false);
+  }
+}
+
+function speakText(text, label) {
+  if (!text || !("speechSynthesis" in window)) {
     showToast("当前浏览器不支持系统朗读");
     return;
   }
   speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(currentItem.text);
+  const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = languageConfig[currentLang].locale;
   utterance.rate = .84;
   utterance.onerror = () => showToast("当前设备不支持该语言发音");
+  utterance.onstart = () => showToast(`正在朗读${label}`);
   speechSynthesis.speak(utterance);
+}
+
+function speakCurrentWord() {
+  if (!currentItem) return;
+  speakText(currentItem.text, "单词");
+}
+
+function speakCurrentExample() {
+  if (!currentItem?.detail?.context) return showToast("例句生成后即可朗读");
+  speakText(currentItem.detail.context, "画面例句");
+}
+
+function speakReviewAnswer() {
+  if (!reviewTarget?.text) return;
+  const language = reviewTarget.language;
+  const previousLanguage = currentLang;
+  if (languageConfig[language]) currentLang = language;
+  speakText(reviewTarget.text, "词卡答案");
+  currentLang = previousLanguage;
 }
 
 function escapeHtml(value) {
@@ -594,7 +876,7 @@ function updateTimeline() {
 }
 
 scene.addEventListener("click", (event) => {
-  if (event.target.closest("button, input, .language-menu, .word-sheet, .learning-toolbar, .player-controls")) return;
+  if (event.target.closest("a, button, input, .language-menu, .word-sheet, .learning-toolbar, .player-controls, .library-panel, .review-panel")) return;
   if (!isPaused) pauseAndAnalyze();
 });
 $("#pauseButton").addEventListener("click", pauseAndAnalyze);
@@ -602,6 +884,7 @@ $("#continueButton").addEventListener("click", continuePlaying);
 $("#retryAnalysis").addEventListener("click", () => loadLanguageResult(true));
 $("#uploadButton").addEventListener("click", requestUpload);
 $("#cameraButton").addEventListener("click", requestCamera);
+$("#flipCamera").addEventListener("click", switchCamera);
 $("#replaceButton").addEventListener("click", requestUpload);
 mediaInput.addEventListener("change", () => {
   loadVideo(mediaInput.files[0]);
@@ -640,14 +923,31 @@ sceneVideo.addEventListener("timeupdate", updateTimeline);
 sceneVideo.addEventListener("durationchange", () => $("#duration").textContent = formatTime(sceneVideo.duration));
 
 $("#closeWordSheet").addEventListener("click", closeWordSheet);
+$("#dismissWordSheet").addEventListener("click", closeWordSheet);
 $("#saveWord").addEventListener("click", toggleSaveWord);
 $("#blockWord").addEventListener("click", blockCurrentItem);
 $("#speakWord").addEventListener("click", speakCurrentWord);
+$("#speakExample").addEventListener("click", speakCurrentExample);
+$("#retryDetail").addEventListener("click", () => {
+  if (!currentItem) return;
+  currentItem.detailLoading = false;
+  openWordSheet(currentItem);
+});
 $("#blacklistButton").addEventListener("click", () => {
   renderBlacklist();
   $("#blacklistPanel").classList.add("open");
   $("#blacklistPanel").setAttribute("aria-hidden", "false");
 });
+$("#libraryButton").addEventListener("click", openLibrary);
+$("#closeLibrary").addEventListener("click", closeLibrary);
+$("#goSearch").addEventListener("click", closeLibrary);
+$("#retryLibrary").addEventListener("click", loadLibrary);
+$("#startReview").addEventListener("click", () => openReview(dueWords[0] || reviewTarget));
+$("#closeReview").addEventListener("click", closeReview);
+$("#reviewRemember").addEventListener("click", () => submitReview("remember"));
+$("#reviewAgain").addEventListener("click", () => submitReview("again"));
+$("#reviewSpeak").addEventListener("click", speakReviewAnswer);
+$("#reviewFinish").addEventListener("click", closeReview);
 $("#closeBlacklist").addEventListener("click", () => {
   $("#blacklistPanel").classList.remove("open");
   $("#blacklistPanel").setAttribute("aria-hidden", "true");
@@ -660,55 +960,37 @@ $("#clearBlacklist").addEventListener("click", () => {
   showToast("已恢复全部学习点");
 });
 
-$("#authForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const code = $("#accessCode").value.trim();
-  if (!code) return;
-  $("#authSubmit").disabled = true;
-  $("#authSubmit").textContent = "正在验证…";
-  $("#authError").textContent = "";
-  try {
-    await verifyAccess(code);
-    setAuthenticated(code);
-    closeAuth();
-    showToast("体验码验证成功");
-    if (pendingAction === "upload") {
-      pendingAction = null;
-      mediaInput.click();
-    } else if (pendingAction === "camera") {
-      pendingAction = null;
-      startCamera();
-    }
-  } catch (error) {
-    $("#authError").textContent = error.message;
-  } finally {
-    $("#authSubmit").disabled = false;
-    $("#authSubmit").textContent = "进入体验";
-  }
-});
-$("#authClose").addEventListener("click", () => {
-  pendingAction = null;
-  closeAuth();
-});
 $("#logoutButton").addEventListener("click", () => {
-  localStorage.removeItem(STORAGE_ACCESS);
+  localStorage.removeItem(STORAGE_SESSION);
+  learningSession = null;
+  accountReady = null;
   $("#logoutButton").hidden = true;
-  showToast("已退出体验");
+  showToast("已重置本机学习账户");
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    if ($("#reviewPanel").classList.contains("open")) closeReview();
+    else if ($("#libraryPanel").classList.contains("open")) closeLibrary();
+    else if (wordSheet.classList.contains("open")) closeWordSheet();
+    return;
+  }
   const interactive = event.target.closest("input, textarea, select, button");
-  if (event.code !== "Space" || interactive || $("#authModal").classList.contains("open")) return;
+  if (event.code !== "Space" || interactive) return;
   event.preventDefault();
   if (isPaused) continuePlaying();
   else pauseAndAnalyze();
 });
 
-$("#logoutButton").hidden = !getAccessCode();
+$("#logoutButton").hidden = true;
 $("#levelLabel").textContent = levelConfig[currentLevel].label;
 $$("#levelMenu button").forEach((button) => {
   button.querySelector("i").textContent = button.dataset.level === currentLevel ? "✓" : "";
 });
 updateBlacklistUI();
 updateTimeline();
+ensureLearningSession().then(() => loadLibrary()).catch(() => {
+  $("#libraryCount").textContent = "!";
+  setLibraryState("error");
+});
 window.addEventListener("pagehide", stopCamera);

@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#080a0d" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>60 秒演示 · 这一帧怎么说</title>
+    <link rel="stylesheet" href="/library.css" />
+    <style>
+      body { overflow: hidden; }
+      .demo-wrap { display: grid; grid-template-columns: minmax(320px, 460px) 1fr; height: calc(100vh - 63px); }
+      .demo-story { display: flex; flex-direction: column; justify-content: center; gap: 22px; padding: clamp(24px, 4vw, 56px); border-right: 1px solid rgba(255,255,255,.07); }
+      .demo-story .eyebrow { margin: 0; color: var(--cyan); font-size: 10px; letter-spacing: .22em; font-weight: 700; }
+      .step-count { color: var(--muted); font-size: 12px; }
+      .step-count b { color: var(--text); font-size: 22px; }
+      .demo-story h1 { margin: 0; font-size: clamp(26px, 2.6vw, 38px); letter-spacing: -.03em; line-height: 1.2; }
+      .demo-story > p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.8; }
+      .story-steps { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+      .story-steps li { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; transition: color .3s; }
+      .story-steps li i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.18); transition: background .3s; }
+      .story-steps li.active { color: var(--text); }
+      .story-steps li.active i { background: var(--cyan); box-shadow: 0 0 0 4px rgba(40,239,209,.14); }
+      .demo-controls { display: flex; gap: 10px; margin-top: 8px; }
+      .demo-controls button { height: 44px; padding: 0 22px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+      #prevStep { border: 1px solid var(--border); background: rgba(255,255,255,.05); }
+      #prevStep:disabled { opacity: .35; cursor: default; }
+      #nextStep { background: var(--cyan); color: #06110e; }
+      .demo-note { margin: 0; color: rgba(244,246,247,.4); font-size: 11px; }
+
+      .demo-stage { display: grid; place-items: center; padding: 24px; }
+      .device { position: relative; width: min(400px, 92%); aspect-ratio: 9 / 16.5; max-height: 92%; border: 1px solid var(--border); border-radius: 34px; overflow: hidden; background: #0b0e12; box-shadow: 0 40px 90px rgba(0,0,0,.5); }
+      .device img.bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+      .device::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(5,7,9,.35), transparent 30%, transparent 62%, rgba(5,7,9,.72)); pointer-events: none; }
+      .device-top { position: absolute; z-index: 3; top: 14px; left: 14px; right: 14px; display: flex; justify-content: space-between; align-items: center; font-size: 10px; }
+      .device-top span { padding: 6px 11px; border-radius: 999px; background: rgba(5,7,9,.6); backdrop-filter: blur(8px); }
+      .device-top b { padding: 6px 11px; border-radius: 999px; background: rgba(40,239,209,.16); color: var(--cyan); }
+
+      .d-step { position: absolute; inset: 0; z-index: 4; opacity: 0; pointer-events: none; transition: opacity .45s; }
+      .d-step.on { opacity: 1; pointer-events: auto; }
+
+      .paused-badge { position: absolute; top: 54px; left: 14px; display: flex; align-items: center; gap: 8px; padding: 8px 13px; border-radius: 12px; background: rgba(5,7,9,.66); backdrop-filter: blur(10px); font-size: 10px; }
+      .paused-badge i { width: 8px; height: 8px; border-radius: 2px; background: var(--cyan); }
+      .paused-hint { position: absolute; bottom: 26px; left: 0; right: 0; text-align: center; color: rgba(255,255,255,.85); font-size: 11px; }
+
+      .d-tag { position: absolute; padding: 8px 11px; border-radius: 11px; background: rgba(8,10,13,.72); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,.12); font-size: 10px; text-align: left; transform: scale(.6); opacity: 0; transition: transform .4s cubic-bezier(.2,.9,.3,1.4), opacity .3s; }
+      .d-tag b, .d-tag small { display: block; }
+      .d-tag small { margin-top: 2px; color: var(--muted); font-size: 8px; }
+      .d-step.on .d-tag { transform: none; opacity: 1; }
+      .d-step.on .d-tag:nth-child(2) { transition-delay: .12s; }
+      .d-step.on .d-tag:nth-child(3) { transition-delay: .24s; }
+      .d-step.on .d-tag:nth-child(4) { transition-delay: .36s; }
+
+      .d-sheet { position: absolute; left: 10px; right: 10px; bottom: 10px; padding: 16px; border-radius: 20px; background: rgba(13,16,21,.96); border: 1px solid rgba(255,255,255,.1); }
+      .d-sheet > b { display: block; font-size: 21px; letter-spacing: -.02em; }
+      .d-sheet .mean { display: block; margin-top: 4px; font-size: 13px; }
+      .d-sheet .meta { display: block; margin-top: 7px; color: var(--cyan); font-size: 8px; letter-spacing: .12em; }
+      .d-sheet .ex { margin: 11px 0 0; padding: 10px 12px; border-radius: 11px; background: rgba(255,255,255,.05); font-size: 10px; line-height: 1.55; }
+      .d-sheet .ex small { display: block; margin-top: 3px; color: var(--muted); }
+      .d-sheet .tags { display: flex; gap: 6px; margin-top: 10px; }
+      .d-sheet .tags span { padding: 5px 8px; border-radius: 8px; background: rgba(169,140,255,.13); color: #cbbfff; font-size: 8px; }
+      .d-save { width: 100%; margin-top: 12px; height: 40px; border-radius: 12px; background: var(--cyan); color: #06110e; font-size: 11px; font-weight: 800; }
+      .d-save.saved { background: rgba(40,239,209,.14); color: var(--cyan); }
+
+      .d-lib { position: absolute; inset: 0; padding: 58px 16px 16px; background: rgba(6,8,10,.92); backdrop-filter: blur(8px); }
+      .d-lib-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .d-lib-stats div { padding: 11px 8px; border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,.04); text-align: center; }
+      .d-lib-stats b { display: block; font-size: 19px; }
+      .d-lib-stats small { color: var(--muted); font-size: 8px; }
+      .d-lib-card { margin-top: 12px; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+      .d-lib-card img { width: 100%; aspect-ratio: 16/8; object-fit: cover; display: block; }
+      .d-lib-card div { padding: 10px 12px; }
+      .d-lib-card b { font-size: 12px; }
+      .d-lib-card small { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; }
+
+      .d-review { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: 12px; padding: 20px; background: rgba(6,8,10,.94); }
+      .d-review figure { position: relative; margin: 0; border-radius: 16px; overflow: hidden; }
+      .d-review figure img { width: 100%; aspect-ratio: 16/10; object-fit: cover; display: block; }
+      .d-review figure span { position: absolute; left: 10px; bottom: 9px; padding: 6px 10px; border-radius: 8px; background: rgba(5,7,9,.7); font-size: 9px; }
+      .d-review > p { margin: 0; text-align: center; color: var(--muted); font-size: 11px; }
+      .d-review .ans { text-align: center; }
+      .d-review .ans b { display: block; font-size: 24px; }
+      .d-review .ans span { color: var(--cyan); font-size: 9px; letter-spacing: .12em; }
+      .d-reveal { align-self: center; padding: 10px 26px; border-radius: 999px; border: 1px solid var(--border); background: rgba(255,255,255,.06); font-size: 11px; font-weight: 700; }
+      .d-grade { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .d-grade button { height: 42px; border-radius: 12px; font-size: 12px; font-weight: 800; }
+      .d-grade .again { background: rgba(255,255,255,.09); }
+      .d-grade .known { background: var(--cyan); color: #06110e; }
+      .d-done { text-align: center; }
+      .d-done h2 { margin: 0 0 8px; font-size: 20px; }
+      .d-done p { margin: 0 0 16px; color: var(--muted); font-size: 11px; }
+
+      @media (max-width: 860px) {
+        body { overflow: auto; }
+        .demo-wrap { grid-template-columns: 1fr; height: auto; }
+        .demo-story { border-right: 0; padding-top: 36px; }
+        .demo-stage { padding-bottom: 60px; }
+        .device { aspect-ratio: 9/15; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="lib-header">
+      <a class="lib-brand" href="/"><span class="brand-mark">帧</span><b>这一帧怎么说</b></a>
+      <nav class="lib-nav" aria-label="主导航">
+        <a href="/how-it-works">如何工作</a>
+        <a href="/library">帧词库</a>
+        <a class="nav-cta" href="/app">体验一下</a>
+      </nav>
+    </header>
+
+    <main class="demo-wrap">
+      <aside class="demo-story">
+        <p class="eyebrow">60-SECOND DEMO</p>
+        <span class="step-count"><b id="stepNumber">01</b> / 05</span>
+        <h1 id="storyTitle">暂停一条真实视频。</h1>
+        <p id="storyCopy">不需要想好关键词。看到咖啡师手上的动作，直接暂停这一帧。</p>
+        <ol class="story-steps" id="storySteps">
+          <li class="active"><i></i><span>暂停真实画面</span></li>
+          <li><i></i><span>AI 标出适合水平的表达</span></li>
+          <li><i></i><span>收进帧词库</span></li>
+          <li><i></i><span>打开帧词库</span></li>
+          <li><i></i><span>完成一次复习</span></li>
+        </ol>
+        <div class="demo-controls">
+          <button id="prevStep" disabled>← 上一步</button>
+          <button id="nextStep">下一步 →</button>
+        </div>
+        <p class="demo-note">演示使用预置数据 · 真实应用可上传任意视频 · 也可以用键盘 ← → 控制</p>
+      </aside>
+
+      <section class="demo-stage">
+        <div class="device">
+          <img class="bg" src="/cafe-scene.jpg" alt="咖啡店真实视频画面" />
+          <header class="device-top"><span>示例视频 · cafe-walkthrough.mp4</span><b>EN · B1</b></header>
+
+          <div class="d-step on" data-step="0">
+            <div class="paused-badge"><i></i> 画面已暂停 · 00:17</div>
+            <p class="paused-hint">只发送这一帧压缩图片 · 视频留在设备中</p>
+          </div>
+
+          <div class="d-step" data-step="1">
+            <button class="d-tag" style="left:8%;top:30%"><b>steam the milk</b><small>给牛奶打蒸汽 · B1</small></button>
+            <button class="d-tag" style="left:52%;top:52%"><b>pour steadily</b><small>平稳地倒入 · B1</small></button>
+            <button class="d-tag" style="left:12%;top:66%"><b>counter service</b><small>柜台点单 · C1</small></button>
+          </div>
+
+          <div class="d-step" data-step="2">
+            <div class="d-sheet">
+              <b>steam the milk</b>
+              <span class="mean">给牛奶打蒸汽</span>
+              <span class="meta">B1 · 动作 · 来自咖啡馆画面</span>
+              <p class="ex">The barista is steaming the milk for a latte.<small>咖啡师正在为拿铁打奶泡。</small></p>
+              <div class="tags"><span>froth the milk</span><span>steam wand</span><span>silky foam</span></div>
+              <button class="d-save" id="demoSave">＋ 加入帧词库</button>
+            </div>
+          </div>
+
+          <div class="d-step" data-step="3">
+            <div class="d-lib">
+              <div class="d-lib-stats">
+                <div><b>1</b><small>今日待复习</small></div>
+                <div><b>1</b><small>已收集表达</small></div>
+                <div><b>1</b><small>来自几段视频</small></div>
+              </div>
+              <div class="d-lib-card">
+                <img src="/cafe-scene.jpg" alt="帧词库中的咖啡馆场景" />
+                <div><b>cafe-walkthrough.mp4</b><small>steam the milk · 给牛奶打蒸汽 · B1</small></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="d-step" data-step="4">
+            <div class="d-review" id="demoReview">
+              <figure>
+                <img src="/cafe-scene.jpg" alt="复习画面" />
+                <span>场景提示：咖啡师正在处理牛奶。</span>
+              </figure>
+              <p id="demoPrompt">你还记得这个表达吗？</p>
+              <div class="ans" id="demoAns" hidden><b>steam the milk</b><span>给牛奶打蒸汽 · B1</span></div>
+              <button class="d-reveal" id="demoReveal">显示表达</button>
+              <div class="d-grade" id="demoGrade" hidden>
+                <button class="again" id="demoAgain">再看看</button>
+                <button class="known" id="demoKnown">认识</button>
+              </div>
+              <div class="d-done" id="demoDone" hidden>
+                <h2>今天的复习完成了。</h2>
+                <p>以后再见到它，你会知道怎么说。</p>
+                <a class="primary-cta" href="/app">从你正在看的视频开始 →</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const titles = [
+        ["暂停一条真实视频。", "不需要想好关键词。看到咖啡师手上的动作，直接暂停这一帧。"],
+        ["AI 标出适合你水平的表达。", "同一帧画面，按 B1 水平标出「刚好比你现在多一步」的说法，贴在它们出现的位置。"],
+        ["点开词条，收进帧词库。", "释义、等级、来源画面、一句贴合画面的例句和常用搭配。点一下主按钮试试。"],
+        ["打开帧词库。", "每个表达都带着它出生的那帧画面，按场景组织，随时可以回来。"],
+        ["完成一次复习。", "看着原画面想起来：显示表达，然后诚实地选「认识」或「再看看」。"]
+      ];
+      let step = 0;
+      const steps = [...document.querySelectorAll(".d-step")];
+      const items = [...document.querySelectorAll("#storySteps li")];
+      function go(next) {
+        step = Math.max(0, Math.min(steps.length - 1, next));
+        steps.forEach((el, i) => el.classList.toggle("on", i === step));
+        items.forEach((el, i) => el.classList.toggle("active", i === step));
+        document.getElementById("stepNumber").textContent = String(step + 1).padStart(2, "0");
+        document.getElementById("storyTitle").textContent = titles[step][0];
+        document.getElementById("storyCopy").textContent = titles[step][1];
+        document.getElementById("prevStep").disabled = step === 0;
+        document.getElementById("nextStep").textContent = step === steps.length - 1 ? "再演一遍 ↺" : "下一步 →";
+        resetReview();
+      }
+      function resetReview() {
+        document.getElementById("demoAns").hidden = true;
+        document.getElementById("demoGrade").hidden = true;
+        document.getElementById("demoReveal").hidden = false;
+        document.getElementById("demoPrompt").hidden = false;
+        document.getElementById("demoDone").hidden = true;
+      }
+      document.getElementById("prevStep").addEventListener("click", () => go(step - 1));
+      document.getElementById("nextStep").addEventListener("click", () => go(step === steps.length - 1 ? 0 : step + 1));
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowLeft") go(step - 1);
+        if (e.key === "ArrowRight") go(step + 1);
+      });
+
+      const save = document.getElementById("demoSave");
+      save.addEventListener("click", () => {
+        const saved = save.classList.toggle("saved");
+        save.textContent = saved ? "✓ 已在帧词库" : "＋ 加入帧词库";
+      });
+
+      const ans = document.getElementById("demoAns");
+      const reveal = document.getElementById("demoReveal");
+      const grade = document.getElementById("demoGrade");
+      const done = document.getElementById("demoDone");
+      reveal.addEventListener("click", () => {
+        ans.hidden = false; grade.hidden = false; reveal.hidden = true;
+      });
+      const finish = () => {
+        ans.hidden = true; grade.hidden = true; reveal.hidden = true;
+        document.getElementById("demoPrompt").hidden = true;
+        done.hidden = false;
+      };
+      document.getElementById("demoKnown").addEventListener("click", finish);
+      document.getElementById("demoAgain").addEventListener("click", () => {
+        ans.hidden = true; grade.hidden = true; reveal.hidden = false;
+      });
+    </script>
+  </body>
+</html>

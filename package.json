@@ -7,6 +7,10 @@
   },
   "scripts": {
     "dev": "vercel dev",
-    "check": "node --check api/analyze.js && node --check api/detail.js && node --check api/challenge.js && node --check api/auth.js && node --check api/health.js && node --check api/me.js && node --check api/settings.js && node --check api/learning-state.js && node --check api/library.js && node --check api/review.js && node --check api/_lib/learning.js"
+    "check": "node --check api/analyze.js && node --check api/detail.js && node --check api/challenge.js && node --check api/auth.js && node --check api/client-config.js && node --check api/health.js && node --check api/me.js && node --check api/settings.js && node --check api/learning-state.js && node --check api/library.js && node --check api/review.js && node --check api/_lib/learning.js",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.10"
   }
 }

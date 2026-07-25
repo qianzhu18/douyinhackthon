@@ -7,6 +7,9 @@
     "api/auth.js": {
       "maxDuration": 10
     },
+    "api/client-config.js": {
+      "maxDuration": 10
+    },
     "api/detail.js": {
       "maxDuration": 30
     },

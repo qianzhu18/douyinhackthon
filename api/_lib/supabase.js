@@ -30,6 +30,16 @@ function storagePath(path) {
   return String(path || "").split("/").filter(Boolean).map(encodeURIComponent).join("/");
 }
 
+function absoluteStorageUrl(path) {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  const storagePathname = normalized.startsWith("/storage/v1/")
+    ? normalized
+    : `/storage/v1${normalized}`;
+  return `${supabaseUrl()}${storagePathname}`;
+}
+
 async function uploadPrivateFrame(path, mimeType, body) {
   return request(`/storage/v1/object/frame-cards/${storagePath(path)}`, {
     method: "PUT",
@@ -46,7 +56,7 @@ async function signedFrameUrl(path, expiresIn = 3600) {
   });
   const signedPath = payload?.signedURL || payload?.signedUrl;
   if (!signedPath) return null;
-  return signedPath.startsWith("http") ? signedPath : `${supabaseUrl()}${signedPath}`;
+  return absoluteStorageUrl(signedPath);
 }
 
 async function recordEvent(userId, eventType, payload = {}) {
@@ -66,4 +76,4 @@ async function consumeQuota(userId, bucket, limit) {
   return payload === true;
 }
 
-module.exports = { request, consumeQuota, uploadPrivateFrame, signedFrameUrl, recordEvent };
+module.exports = { request, consumeQuota, uploadPrivateFrame, signedFrameUrl, recordEvent, absoluteStorageUrl };
