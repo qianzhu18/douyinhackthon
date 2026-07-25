@@ -2,207 +2,260 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#080a0d" />
-    <meta property="og:title" content="这一帧怎么说" />
-    <meta property="og:description" content="暂停视频，让真实世界开口。" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#090909" />
+    <meta property="og:title" content="这一帧怎么说 · 每一帧，都有你还没学会的说法" />
+    <meta property="og:description" content="暂停短视频，AI 看懂画面，把你看见却不会说的表达收进词库。" />
     <meta property="og:image" content="/og.png" />
     <meta name="twitter:card" content="summary_large_image" />
-    <title>这一帧怎么说</title>
-    <link rel="stylesheet" href="/demo.css" />
+    <title>这一帧怎么说 · 每一帧，都有你还没学会的说法</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/editions.css" />
   </head>
   <body>
-    <div class="stage">
-      <aside class="story-panel">
-        <div class="brand-lockup"><span class="brand-mark">帧</span><span>这一帧怎么说</span></div>
-        <p class="eyebrow">VIDEO · VISION · LANGUAGE</p>
-        <h1>暂停一下，<br />让画面开口。</h1>
-        <p class="story-copy">上传一段自己的视频，在任何一帧停下。AI 会找到值得学的物品、人物与动作表达。</p>
-        <div class="journey">
-          <div class="journey-step active"><b>01</b><span>选择画面<small>上传视频或打开实时摄像头</small></span></div>
-          <div class="journey-step"><b>02</b><span>暂停画面<small>只发送压缩后的当前帧</small></span></div>
-          <div class="journey-step"><b>03</b><span>点击浮窗<small>听发音、看例句、收藏表达</small></span></div>
-        </div>
-        <div class="privacy-note"><span>✓</span><p><b>视频和摄像头流不会被上传</b><small>只有你暂停时的画面会用于语言分析。</small></p></div>
-      </aside>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <defs>
+        <linearGradient id="brandGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#A3E635" />
+          <stop offset="1" stop-color="#F6A8C8" />
+        </linearGradient>
+        <symbol id="brandMark" viewBox="0 0 64 64">
+          <g fill="none" stroke="url(#brandGrad)" stroke-width="5" stroke-linecap="round">
+            <path d="M10 26 v-6 a10 10 0 0 1 10-10 h6" />
+            <path d="M38 10 h6 a10 10 0 0 1 10 10 v6" />
+            <path d="M54 38 v6 a10 10 0 0 1-10 10 h-6" />
+            <path d="M26 54 h-6 a10 10 0 0 1-10-10 v-6" />
+          </g>
+          <g fill="#FFFFFF">
+            <rect x="23" y="28" width="4" height="8" rx="2" />
+            <rect x="30" y="22" width="4" height="20" rx="2" />
+            <rect x="37" y="26" width="4" height="12" rx="2" />
+          </g>
+          <rect x="44" y="30" width="4" height="4" rx="2" fill="#F6A8C8" />
+        </symbol>
+      </defs>
+    </svg>
 
-      <main class="phone" aria-label="视频语言学习播放器">
-        <div class="scene" id="scene" tabindex="0">
-          <img id="sceneImage" src="/cafe-scene.jpg" alt="咖啡师在咖啡店制作咖啡的示例画面" />
-          <video id="sceneVideo" playsinline preload="metadata" hidden></video>
-          <canvas id="frameCanvas" hidden></canvas>
-          <input id="mediaInput" type="file" accept="video/mp4,video/webm,video/quicktime,video/*" hidden />
-          <div class="scene-vignette"></div>
-          <div class="scene-grain"></div>
-
-          <header class="player-header">
-            <span class="source-badge" id="sourceBadge">示例画面</span>
-            <div class="header-actions">
-              <button class="level-pill" id="levelButton" aria-haspopup="true">
-                <span id="levelLabel">A1–A2</span><i>⌄</i>
-              </button>
-              <button class="language-pill" id="languageButton" aria-haspopup="true">
-                <span id="languageLabel">EN</span><i>⌄</i>
-              </button>
-              <button class="header-button" id="uploadButton">＋ 视频</button>
-              <button class="camera-button" id="cameraButton">◉ 相机</button>
-              <button class="library-button" id="libraryButton">词库 <span id="libraryCount">0</span></button>
-              <button class="blacklist-button" id="blacklistButton" aria-label="管理黑名单">⊘ <span id="blacklistCount">0</span></button>
-              <button class="logout-button" id="logoutButton" hidden aria-label="退出体验">退出</button>
-            </div>
-          </header>
-
-          <button class="pause-affordance" id="pauseButton" aria-label="暂停并分析当前画面">
-            <span>Ⅱ</span><small>暂停识别</small>
-          </button>
-
-          <div class="welcome-tip" id="welcomeTip">
-            <span>✦</span>
-            <div><b>先上传视频，或试试示例画面</b><small>点击画面暂停，AI 会识别当前帧</small></div>
-          </div>
-
-          <div class="analysis-state" id="analysisState" aria-live="polite">
-            <span class="analysis-spinner"></span>
-            <div><b id="analysisTitle">正在理解这一帧</b><small id="analysisMessage">识别画面中的核心学习点…</small></div>
-          </div>
-
-          <div class="tags-layer" id="tagsLayer" aria-label="当前画面的语言学习浮窗"></div>
-
-          <div class="language-menu" id="languageMenu" aria-hidden="true">
-            <button data-lang="en"><span><b>English</b><small>英语</small></span><i>✓</i></button>
-            <button data-lang="ja"><span><b>日本語</b><small>日语</small></span><i></i></button>
-            <button data-lang="ko"><span><b>한국어</b><small>韩语</small></span><i></i></button>
-          </div>
-
-          <div class="level-menu" id="levelMenu" aria-hidden="true">
-            <button data-level="beginner"><span><b>A1–A2 · 基础</b><small>高频物品、人物和基础动作</small></span><i>✓</i></button>
-            <button data-level="intermediate"><span><b>B1–B2 · 进阶</b><small>动作、搭配和场景短语</small></span><i></i></button>
-            <button data-level="advanced"><span><b>C1–C2 · 高阶</b><small>精确术语和地道表达</small></span><i></i></button>
-          </div>
-
-          <div class="player-controls" id="playerControls">
-            <div class="timeline-row" id="timelineRow">
-              <span id="currentTime">00:00</span>
-              <input id="timeline" type="range" min="0" max="1000" value="0" aria-label="视频进度" />
-              <span id="duration">00:00</span>
-            </div>
-            <div class="camera-live" id="cameraLive" hidden><span></span>摄像头实时预览 · 点击画面暂停</div>
-            <div class="control-row">
-              <button id="muteButton"><span id="muteIcon">♪</span><b id="muteLabel">开启声音</b></button>
-              <small>点击画面或按空格暂停</small>
-              <button id="replaceButton">更换视频</button>
-            </div>
-          </div>
-
-          <div class="learning-toolbar" id="learningToolbar">
-            <div class="learning-status">
-              <span class="paused-dot"></span>
-              <div><b>画面已暂停</b><small id="learningCount">等待分析</small></div>
-            </div>
-            <div class="paused-actions">
-              <button class="retry-button" id="retryAnalysis" hidden>重新分析</button>
-              <button class="continue-button" id="continueButton"><span>▶</span> 继续播放</button>
-            </div>
-          </div>
-
-          <section class="word-sheet" id="wordSheet" aria-hidden="true">
-            <div class="sheet-handle"></div>
-            <button class="sheet-close" id="closeWordSheet" aria-label="关闭">×</button>
-            <div class="word-heading">
-              <div>
-                <span class="word-type" id="wordType">NOUN · 名词</span>
-                <h2 id="wordText">coffee</h2>
-                <p class="phonetic-row"><span id="phonetic">正在生成详情…</span><button class="speak-button" id="speakWord" aria-label="朗读单词">♪</button></p>
-              </div>
-              <div class="word-actions">
-                <button class="block-word" id="blockWord">⊘ 不再出现</button>
-              </div>
-            </div>
-            <div class="word-sheet-scroll">
-              <div class="meaning-card">
-                <div class="meaning-label"><span>这一帧里</span><button class="speak-example" id="speakExample" aria-label="朗读画面例句">朗读例句</button></div>
-                <strong id="meaningText">咖啡</strong>
-                <p id="contextText">This is a cup of freshly brewed coffee.</p>
-                <small id="translationText">这是一杯刚冲好的咖啡。</small>
-                <button class="retry-detail" id="retryDetail" hidden>重新生成详情</button>
-              </div>
-              <div class="collocation-row" id="collocations"></div>
-              <p class="speech-note" id="speechNote">发音由当前设备的系统语音提供。</p>
-            </div>
-            <div class="word-sheet-footer">
-              <button class="dismiss-word" id="dismissWordSheet">继续看这一帧</button>
-              <button class="save-word" id="saveWord">＋ 加入帧词库</button>
-            </div>
-          </section>
-
-          <section class="blacklist-panel" id="blacklistPanel" aria-hidden="true">
-            <header>
-              <button id="closeBlacklist" aria-label="关闭">‹</button>
-              <div><b>不再出现的内容</b><small>跨英语、日语和韩语全局生效</small></div>
-            </header>
-            <div class="blacklist-list" id="blacklistList"></div>
-            <div class="blacklist-empty" id="blacklistEmpty">
-              <span>⊘</span><b>黑名单还是空的</b><small>在学习点详情中选择“不再出现”。</small>
-            </div>
-            <button class="clear-blacklist" id="clearBlacklist" hidden>全部恢复</button>
-          </section>
-
-          <section class="library-panel" id="libraryPanel" aria-hidden="true">
-            <header>
-              <button id="closeLibrary" aria-label="关闭">‹</button>
-              <div><b>我的帧词库</b><small>从你亲眼见过的画面里，带走表达</small></div>
-            </header>
-            <div class="library-metrics">
-              <div><strong id="dueCount">0</strong><small>今日待复习</small></div>
-              <div><strong id="libraryTotal">0</strong><small>已收集表达</small></div>
-              <div><strong id="sceneCount">0</strong><small>留下画面</small></div>
-            </div>
-            <button class="start-review" id="startReview">开始复习</button>
-            <div class="library-state" id="libraryState" role="status" hidden>
-              <span>↻</span>
-              <div><b id="libraryStateTitle">正在加载帧词库</b><small id="libraryStateMessage">正在找回你收藏过的画面和表达。</small></div>
-              <button id="retryLibrary" hidden>重新加载</button>
-            </div>
-            <div class="library-list" id="libraryList"></div>
-            <div class="library-empty" id="libraryEmpty">
-              <span>✦</span><b>你还没有帧词卡</b><small>从一段视频里暂停一帧，收下第一个“看见却不会说”的表达。</small>
-              <button id="goSearch">去搜索这一帧</button>
-            </div>
-          </section>
-
-          <section class="review-panel" id="reviewPanel" aria-hidden="true">
-            <header>
-              <button id="closeReview" aria-label="返回词库">‹</button>
-              <div><b>看着这一帧，你还记得吗？</b><small id="reviewProgress">画面复习</small></div>
-            </header>
-            <img id="reviewImage" alt="词卡对应的原画面" />
-            <div class="review-copy"><span id="reviewLevel">FRAME WORD</span><p id="reviewMeaning"></p><h2 id="reviewAnswer">想一想，它怎么说？</h2></div>
-            <div class="review-actions"><button class="again" id="reviewAgain">再看看</button><button class="remember" id="reviewRemember">我认识</button></div>
-            <div class="review-result" id="reviewResult" hidden>
-              <p id="reviewFeedback"></p>
-              <div><button id="reviewSpeak">♪ 朗读答案</button><button class="review-finish" id="reviewFinish">完成复习</button></div>
-            </div>
-          </section>
-
-          <div class="toast" id="toast"></div>
-        </div>
-      </main>
+    <div id="loader" aria-hidden="true">
+      <canvas id="loaderCanvas"></canvas>
+      <p class="loader-caption">这一帧怎么说 <span>·</span> SCENE LOADING</p>
     </div>
 
-    <div class="auth-modal" id="authModal" aria-hidden="true">
-      <form class="auth-card" id="authForm">
-        <button type="button" class="auth-close" id="authClose" aria-label="关闭">×</button>
-        <span class="auth-mark">帧</span>
-        <p class="eyebrow">PRIVATE PREVIEW</p>
-        <h2>输入体验码</h2>
-        <p>这是一个小范围体验版本，验证后即可上传视频。</p>
-        <label for="accessCode">体验码</label>
-        <input id="accessCode" name="accessCode" type="password" autocomplete="current-password" required />
-        <small class="auth-error" id="authError"></small>
-        <button class="auth-submit" id="authSubmit" type="submit">进入体验</button>
-      </form>
-    </div>
+    <canvas id="aurora" aria-hidden="true"></canvas>
+    <canvas id="petals" aria-hidden="true"></canvas>
+    <div class="grain" aria-hidden="true"></div>
 
-    <script src="/demo.js"></script>
+    <header class="site-header">
+      <a class="site-brand" href="/"><svg class="brand-mark" aria-hidden="true"><use href="#brandMark" /></svg><b>这一帧怎么说</b></a>
+      <div class="header-right"><a href="/how-it-works">如何工作</a><a href="/library">帧词库</a><a class="header-cta" href="/app">体验一下 <i>↗</i></a></div>
+    </header>
+
+    <button id="chapterPill" type="button" aria-label="章节导航">
+      <span id="pillName">序 · Opening</span>
+      <i>≡</i>
+    </button>
+
+    <nav id="chapterMenu" aria-label="章节菜单">
+      <a href="#hero" data-menu>序 · Opening</a>
+      <a href="#ch-see" data-menu>01 · 看见</a>
+      <a href="#ch-level" data-menu>02 · 水平</a>
+      <a href="#ch-card" data-menu>03 · 收藏</a>
+      <a href="#ch-replay" data-menu>04 · 回看</a>
+      <a href="#cta" data-menu>开始 · Begin</a>
+    </nav>
+
+    <main>
+      <!-- CH1 HERO · WordFieldHero -->
+      <section class="ed-hero" id="hero" data-chapter="序 · Opening" data-theme="spring">
+        <div class="word-field" id="wordField" aria-hidden="true">
+          <span>steam</span><span>aisle</span><span>drizzle</span><span>simmer</span>
+          <span>bustling</span><span>layover</span><span>pour</span><span>checkout</span>
+        </div>
+        <div class="hero-inner">
+          <p class="hero-eyebrow"><i></i><em>pause · search · remember</em></p>
+          <h1 data-split>每一帧，</h1>
+          <h1 class="h1-gradient" data-split>都有你<em class="ac">还没学会的说法</em>。</h1>
+          <p class="hero-sub">暂停短视频，AI 看懂画面，<br />把你看见却不会说的表达收进词库。</p>
+          <div class="hero-actions">
+            <a class="primary-cta" href="/app"><span>▶</span> 上传视频，搜索这一帧</a>
+            <a class="secondary-cta" href="/demo">看 60 秒演示 <span>→</span></a>
+          </div>
+          <p class="hero-trust">视频留在设备中 · 仅暂停帧用于识别</p>
+        </div>
+        <div class="hero-bottom">
+          <p>你刷过的每一条视频，<br />都藏着你只会在心里默念的画面。</p>
+          <div class="hero-index">
+            <a href="#ch-see">看见</a>
+            <a href="#ch-level">水平</a>
+            <a href="#ch-card">收藏</a>
+            <a href="#ch-replay">回看</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- CH2 看见 · inner monologue -->
+      <section class="ed-chapter" id="ch-see" data-chapter="01 · 看见" data-theme="spring">
+        <div class="chapter-stage">
+          <div class="chapter-copy">
+            <span class="chapter-num">01</span>
+            <h2 data-split>他正在做的这个动作，</h2>
+            <h2 data-split>英语到底怎么说？</h2>
+            <p class="chapter-text">你不用先想好关键词。看见、暂停，就够了。</p>
+          </div>
+          <div class="chapter-visual">
+            <figure class="visual-frame" data-float>
+              <img src="/cafe-scene.jpg" alt="咖啡师在咖啡店制作咖啡的真实画面" />
+              <span class="frame-tag tag-a"><i></i><b>steam the milk</b><small>给牛奶打蒸汽 · B1</small></span>
+              <span class="frame-tag tag-b"><i></i><b>pour steadily</b><small>平稳地倒入 · B1</small></span>
+              <span class="frame-tag tag-c"><i></i><b>coffee machine</b><small>咖啡机 · A2</small></span>
+              <span class="frame-live"><i></i> PAUSED · FRAME 00:17</span>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- CH3 水平 · LevelLens -->
+      <section class="ed-chapter flip" id="ch-level" data-chapter="02 · 水平" data-theme="blossom">
+        <div class="chapter-stage">
+          <div class="chapter-copy">
+            <span class="chapter-num">02</span>
+            <h2 data-split>不是更多单词，</h2>
+            <h2 data-split>是刚好比你现在多一步。</h2>
+            <p class="chapter-text">同一帧画面，AI 按你的当前水平换一副眼镜。切一切，看看同一杯咖啡在不同水平下的说法。</p>
+          </div>
+          <div class="chapter-visual">
+            <div class="float-card lens-card" data-float>
+              <div class="lens-switch" role="tablist" aria-label="选择水平">
+                <button class="active" data-lens="a" role="tab">A1–A2</button>
+                <button data-lens="b" role="tab">B1–B2</button>
+                <button data-lens="c" role="tab">C1–C2</button>
+              </div>
+              <div class="lens-words" id="lensWords">
+                <div data-lens="a">
+                  <div><b>cup</b><small>杯子 · A1</small></div>
+                  <div><b>chair</b><small>椅子 · A1</small></div>
+                  <div><b>street</b><small>街道 · A2</small></div>
+                </div>
+                <div data-lens="b" hidden>
+                  <div><b>pour steadily</b><small>平稳地倒入 · B1</small></div>
+                  <div><b>place an order</b><small>下单 · B1</small></div>
+                  <div><b>steam the milk</b><small>给牛奶打蒸汽 · B1</small></div>
+                </div>
+                <div data-lens="c" hidden>
+                  <div><b>froth the milk</b><small>把牛奶打出绵密奶泡 · C1</small></div>
+                  <div><b>counter service</b><small>柜台点单服务 · C1</small></div>
+                  <div><b>latte art</b><small>拿铁拉花 · C2</small></div>
+                </div>
+              </div>
+              <p class="lens-note">同一家咖啡店 · 三副水平眼镜</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CH4 收藏 · FrameWordCard -->
+      <section class="ed-chapter" id="ch-card" data-chapter="03 · 收藏" data-theme="aurora">
+        <div class="chapter-stage">
+          <div class="chapter-copy">
+            <span class="chapter-num">03</span>
+            <h2 data-split>不是收藏一个词，</h2>
+            <h2 data-split>是带走你亲眼见过的那一刻。</h2>
+            <p class="chapter-text">每张帧词卡都带着它出生的那帧画面。你记住的不只是拼写，还有蒸汽、动作和当时的光线。</p>
+          </div>
+          <div class="chapter-visual">
+            <div class="float-card fw-card" data-float>
+              <figure class="fw-frame">
+                <img src="/cafe-scene.jpg" alt="帧词卡来源画面：咖啡店" />
+                <span class="fw-source">来自咖啡馆画面 · B1</span>
+              </figure>
+              <div class="fw-body">
+                <b>steam the milk</b>
+                <span class="fw-meaning">给牛奶打蒸汽</span>
+                <p>The barista is steaming the milk for a latte.<small>咖啡师正在为拿铁打奶泡。</small></p>
+                <button class="fw-save" type="button">＋ 加入帧词库</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CH5 回看 · ReplayTimeline -->
+      <section class="ed-chapter flip" id="ch-replay" data-chapter="04 · 回看" data-theme="gold">
+        <div class="chapter-stage">
+          <div class="chapter-copy">
+            <span class="chapter-num">04</span>
+            <h2 data-split>一个词，</h2>
+            <h2 data-split>让你愿意再看一遍这一帧。</h2>
+            <p class="chapter-text">每个被收进词库的表达，都会在你暂停过的地方留下一枚刻度。下一次刷到同一条视频，你会想停下来确认：这次我真的会说了。</p>
+          </div>
+          <div class="chapter-visual">
+            <div class="float-card replay-card" data-float>
+              <figure class="replay-frame">
+                <img src="/cafe-scene.jpg" alt="带回看刻度的视频画面" />
+                <span class="replay-stamp">00:17</span>
+              </figure>
+              <div class="replay-track">
+                <div class="replay-progress"></div>
+                <span class="replay-mark" style="--at:24%"><i></i><b>steam the milk</b></span>
+                <span class="replay-mark" style="--at:52%"><i></i><b>pour steadily</b></span>
+                <span class="replay-mark" style="--at:78%"><i></i><b>counter service</b></span>
+              </div>
+              <p class="replay-note">3 枚刻度 · 来自你在同一条视频里的三次暂停</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CH6 复习 + 收尾 CTA -->
+      <section class="ed-cta" id="cta" data-chapter="开始 · Begin" data-theme="spring">
+        <div class="review-home" id="reviewHome">
+          <figure class="review-home-frame">
+            <img src="/cafe-scene.jpg" alt="复习画面：咖啡师正在处理牛奶" />
+            <span class="review-home-hint">场景提示：咖啡师正在处理牛奶。</span>
+          </figure>
+          <p class="review-home-prompt">你还记得这个表达吗？</p>
+          <div class="review-home-answer" id="reviewHomeAnswer" hidden>
+            <b>steam the milk</b>
+            <span>给牛奶打蒸汽 · B1</span>
+          </div>
+          <div class="review-home-actions">
+            <button class="rh-reveal" id="reviewHomeReveal" type="button">显示表达</button>
+            <div class="rh-grade" id="reviewHomeGrade" hidden>
+              <button type="button" data-grade="again">再看看</button>
+              <button type="button" data-grade="known">认识</button>
+            </div>
+          </div>
+        </div>
+        <p class="cta-line">以后再见到它，你会知道怎么说。</p>
+        <h2 data-split>从你正在看的视频</h2>
+        <h2 class="h1-gradient" data-split><em class="ac">开始</em>。</h2>
+        <div class="hero-actions">
+          <a class="primary-cta" href="/app"><span>▶</span> 上传视频，搜索这一帧</a>
+          <a class="secondary-cta" href="/library">看看帧词库 <span>→</span></a>
+        </div>
+      </section>
+    </main>
+
+    <footer data-chapter="页脚" data-theme="spring">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <a class="site-brand" href="/"><svg class="brand-mark" aria-hidden="true"><use href="#brandMark" /></svg><b>这一帧怎么说</b></a>
+          <em>pause · search · remember</em>
+        </div>
+        <nav class="footer-links" aria-label="页脚导航">
+          <a href="/how-it-works">如何工作</a>
+          <a href="/library">帧词库</a>
+          <a href="/demo">60 秒演示</a>
+          <a href="/app">体验一下</a>
+        </nav>
+        <a class="primary-cta" href="/app"><span>▶</span> 搜索这一帧</a>
+      </div>
+      <div class="footer-bottom"><span>© 2026 这一帧怎么说</span><span>EVERY FRAME HAS A WORD YOU HAVEN'T LEARNED YET</span></div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/lenis@1.1.14/dist/lenis.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+    <script src="/editions.js"></script>
   </body>
 </html>

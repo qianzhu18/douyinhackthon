@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#080a0d" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>如何工作 · 这一帧怎么说</title>
+    <link rel="stylesheet" href="/library.css" />
+    <style>
+      .how-main h1 { font-size: clamp(28px, 4vw, 40px); letter-spacing: -.03em; }
+      .how-lede { margin: 14px 0 44px; max-width: 560px; color: var(--muted); font-size: 15px; }
+      .how-steps { display: grid; gap: 14px; }
+      .how-step { display: grid; grid-template-columns: 56px 1fr; gap: 18px; padding: 22px; border: 1px solid var(--border); border-radius: 18px; background: rgba(255,255,255,.035); }
+      .how-step > b { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 13px; background: rgba(40,239,209,.1); color: var(--cyan); font-size: 13px; }
+      .how-step h2 { margin: 2px 0 8px; font-size: 17px; }
+      .how-step p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.8; }
+      .how-privacy { margin-top: 14px; padding: 22px; border: 1px dashed rgba(40,239,209,.35); border-radius: 18px; }
+      .how-privacy h2 { margin: 0 0 8px; font-size: 15px; color: var(--cyan); }
+      .how-privacy p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.8; }
+      .how-cta { margin-top: 40px; }
+      @media (max-width: 560px) { .how-step { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <header class="lib-header">
+      <a class="lib-brand" href="/"><span class="brand-mark">帧</span><b>这一帧怎么说</b></a>
+      <nav class="lib-nav" aria-label="主导航">
+        <a class="active" href="/how-it-works">如何工作</a>
+        <a href="/library">帧词库</a>
+        <a class="nav-cta" href="/app">体验一下</a>
+      </nav>
+    </header>
+
+    <main class="lib-main how-main">
+      <h1>看见、暂停、收进词库。</h1>
+      <p class="how-lede">这一帧怎么说不是翻译器，也不是口语教练。它回答的是一个更具体的问题：画面里你正在看的这个动作、这件东西，用你刚好能学会的下一层表达怎么说。</p>
+
+      <div class="how-steps">
+        <div class="how-step">
+          <b>01</b>
+          <div>
+            <h2>暂停任何一帧</h2>
+            <p>上传自己的视频，或打开摄像头。视频只在你的设备上播放——点击画面暂停时，只有这一帧被压缩成一张图片用于识别，原始视频不会被上传。</p>
+          </div>
+        </div>
+        <div class="how-step">
+          <b>02</b>
+          <div>
+            <h2>AI 看懂画面，而不只是认出物体</h2>
+            <p>视觉模型先理解画面里正在发生的事——人物、动作、关系，再按你选择的 CEFR 水平（A1–C2）挑出 3–5 个「刚好比你现在多一步」的表达，标在它们出现的位置。</p>
+          </div>
+        </div>
+        <div class="how-step">
+          <b>03</b>
+          <div>
+            <h2>每个表达都带着它的画面</h2>
+            <p>点开标签，你会看到释义、等级、来自哪段画面、一句贴合画面的例句和三个常用搭配。觉得有用，就连同那帧画面一起收进帧词库。</p>
+          </div>
+        </div>
+        <div class="how-step">
+          <b>04</b>
+          <div>
+            <h2>看着画面想起来</h2>
+            <p>帧词库按场景组织你收过的表达。复习时给你原画面和一句场景提示，想起来了点「认识」，没想起来点「再看看」——不考拼写，不要求开口。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="how-privacy">
+        <h2>数据边界</h2>
+        <p>视频文件和摄像头流始终留在你的设备中；只有暂停瞬间的单帧图片会发送给视觉模型用于识别。帧词库保存在浏览器本地（localStorage），不上传、不需要账号。当前为小范围体验版本，上传功能需要体验码。</p>
+      </div>
+
+      <div class="how-cta">
+        <a class="primary-cta" href="/app">暂停这一帧 →</a>
+      </div>
+    </main>
+  </body>
+</html>
