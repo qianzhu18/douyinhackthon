@@ -112,21 +112,27 @@
               <div>
                 <span class="word-type" id="wordType">NOUN · 名词</span>
                 <h2 id="wordText">coffee</h2>
-              <p><span id="phonetic">正在生成详情…</span><button class="speak-button" id="speakWord" aria-label="朗读">♪</button></p>
+                <p class="phonetic-row"><span id="phonetic">正在生成详情…</span><button class="speak-button" id="speakWord" aria-label="朗读单词">♪</button></p>
               </div>
               <div class="word-actions">
-                <button class="save-word" id="saveWord">＋ 收藏</button>
                 <button class="block-word" id="blockWord">⊘ 不再出现</button>
               </div>
             </div>
-            <div class="meaning-card">
-              <span>这一帧里</span>
-              <strong id="meaningText">咖啡</strong>
-              <p id="contextText">This is a cup of freshly brewed coffee.</p>
-              <small id="translationText">这是一杯刚冲好的咖啡。</small>
+            <div class="word-sheet-scroll">
+              <div class="meaning-card">
+                <div class="meaning-label"><span>这一帧里</span><button class="speak-example" id="speakExample" aria-label="朗读画面例句">朗读例句</button></div>
+                <strong id="meaningText">咖啡</strong>
+                <p id="contextText">This is a cup of freshly brewed coffee.</p>
+                <small id="translationText">这是一杯刚冲好的咖啡。</small>
+                <button class="retry-detail" id="retryDetail" hidden>重新生成详情</button>
+              </div>
+              <div class="collocation-row" id="collocations"></div>
+              <p class="speech-note" id="speechNote">发音由当前设备的系统语音提供。</p>
             </div>
-            <div class="collocation-row" id="collocations"></div>
-            <p class="speech-note" id="speechNote">发音由当前设备的系统语音提供。</p>
+            <div class="word-sheet-footer">
+              <button class="dismiss-word" id="dismissWordSheet">继续看这一帧</button>
+              <button class="save-word" id="saveWord">＋ 加入帧词库</button>
+            </div>
           </section>
 
           <section class="blacklist-panel" id="blacklistPanel" aria-hidden="true">

@@ -414,7 +414,9 @@ async function openWordSheet(item) {
   $("#collocations").innerHTML = item.detail
     ? item.detail.tags.map((tag) => `<button type="button">${escapeHtml(tag)}</button>`).join("")
     : "<button type=\"button\">生成常用搭配中…</button>";
-  $("#saveWord").disabled = !item.detail;
+  $("#retryDetail").hidden = true;
+  // Saving the visual word card must never depend on a second model call.
+  $("#saveWord").disabled = false;
   updateSaveButton();
   wordSheet.classList.add("open");
   wordSheet.setAttribute("aria-hidden", "false");
@@ -444,14 +446,15 @@ async function openWordSheet(item) {
     $("#translationText").textContent = payload.translation;
     $("#collocations").innerHTML = payload.tags
       .map((tag) => `<button type="button">${escapeHtml(tag)}</button>`).join("");
-    $("#saveWord").disabled = false;
+    $("#retryDetail").hidden = true;
     updateSaveButton();
-  } catch (error) {
+  } catch {
     if (currentItem === item) {
-      $("#phonetic").textContent = "详情生成失败";
-      $("#contextText").textContent = error.message;
-      $("#translationText").textContent = "再次点击该浮窗可以重试";
+      $("#phonetic").textContent = "详情稍后再试";
+      $("#contextText").textContent = "详细例句暂时没有生成出来，但不影响收藏这张帧词卡。";
+      $("#translationText").textContent = "你可以先加入词库，或点击下方重新生成。";
       $("#collocations").innerHTML = "";
+      $("#retryDetail").hidden = false;
     }
   } finally {
     item.detailLoading = false;
@@ -461,6 +464,7 @@ async function openWordSheet(item) {
 function closeWordSheet() {
   wordSheet.classList.remove("open");
   wordSheet.setAttribute("aria-hidden", "true");
+  currentItem = null;
 }
 
 function getBlacklist() {
@@ -540,7 +544,8 @@ function updateSaveButton() {
 
 async function toggleSaveWord() {
   if (!currentItem) return;
-  if (libraryWords.some((word) => `${word.language}:${word.concept}` === wordKey())) {
+  const savingItem = currentItem;
+  if (libraryWords.some((word) => `${word.language}:${word.concept}` === wordKey(savingItem))) {
     openLibrary();
     return;
   }
@@ -549,11 +554,11 @@ async function toggleSaveWord() {
   try {
     const result = currentFrame?.results[`${currentLang}:${currentLevel}`];
     const word = {
-      concept: currentItem.concept,
+      concept: savingItem.concept,
       language: currentLang,
-      text: currentItem.text,
-      meaning: currentItem.meaning,
-      detail: { ...(currentItem.detail || {}), cefr: currentItem.cefr, kind: currentItem.kind }
+      text: savingItem.text,
+      meaning: savingItem.meaning,
+      detail: { ...(savingItem.detail || {}), cefr: savingItem.cefr, kind: savingItem.kind }
     };
     const response = await apiFetch("/api/library", {
       method: "POST",
@@ -566,7 +571,7 @@ async function toggleSaveWord() {
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || "保存到帧词库失败");
-    libraryWords = [payload.word, ...libraryWords.filter((item) => `${item.language}:${item.concept}` !== wordKey())];
+    libraryWords = [payload.word, ...libraryWords.filter((item) => `${item.language}:${item.concept}` !== wordKey(savingItem))];
     reviewTarget = payload.word;
     updateLibraryUI();
     updateSaveButton();
@@ -675,17 +680,28 @@ async function submitReview(action) {
   }
 }
 
-function speakCurrentWord() {
-  if (!currentItem || !("speechSynthesis" in window)) {
+function speakText(text, label) {
+  if (!text || !("speechSynthesis" in window)) {
     showToast("当前浏览器不支持系统朗读");
     return;
   }
   speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(currentItem.text);
+  const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = languageConfig[currentLang].locale;
   utterance.rate = .84;
   utterance.onerror = () => showToast("当前设备不支持该语言发音");
+  utterance.onstart = () => showToast(`正在朗读${label}`);
   speechSynthesis.speak(utterance);
+}
+
+function speakCurrentWord() {
+  if (!currentItem) return;
+  speakText(currentItem.text, "单词");
+}
+
+function speakCurrentExample() {
+  if (!currentItem?.detail?.context) return showToast("例句生成后即可朗读");
+  speakText(currentItem.detail.context, "画面例句");
 }
 
 function escapeHtml(value) {
@@ -780,9 +796,16 @@ sceneVideo.addEventListener("timeupdate", updateTimeline);
 sceneVideo.addEventListener("durationchange", () => $("#duration").textContent = formatTime(sceneVideo.duration));
 
 $("#closeWordSheet").addEventListener("click", closeWordSheet);
+$("#dismissWordSheet").addEventListener("click", closeWordSheet);
 $("#saveWord").addEventListener("click", toggleSaveWord);
 $("#blockWord").addEventListener("click", blockCurrentItem);
 $("#speakWord").addEventListener("click", speakCurrentWord);
+$("#speakExample").addEventListener("click", speakCurrentExample);
+$("#retryDetail").addEventListener("click", () => {
+  if (!currentItem) return;
+  currentItem.detailLoading = false;
+  openWordSheet(currentItem);
+});
 $("#blacklistButton").addEventListener("click", () => {
   renderBlacklist();
   $("#blacklistPanel").classList.add("open");
@@ -816,6 +839,12 @@ $("#logoutButton").addEventListener("click", () => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    if ($("#reviewPanel").classList.contains("open")) $("#reviewPanel").classList.remove("open");
+    else if ($("#libraryPanel").classList.contains("open")) closeLibrary();
+    else if (wordSheet.classList.contains("open")) closeWordSheet();
+    return;
+  }
   const interactive = event.target.closest("input, textarea, select, button");
   if (event.code !== "Space" || interactive) return;
   event.preventDefault();
