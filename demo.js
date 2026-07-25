@@ -410,6 +410,7 @@ function showAnalysisError(rawMessage) {
   isAnalyzing = false;
   setAnalysisState("error", rawMessage || "未知错误");
   $("#learningCount").textContent = "未能完成分析";
+  $("#retryAnalysis").textContent = "重新分析";
   $("#retryAnalysis").hidden = false;
 }
 
@@ -434,6 +435,8 @@ function renderResult(result) {
       openWordSheet(item);
     });
   });
+  $("#retryAnalysis").textContent = "重新识别这一帧";
+  $("#retryAnalysis").hidden = false;
 }
 
 async function openWordSheet(item) {
@@ -628,6 +631,7 @@ function formatReviewTime(value) {
 }
 
 async function loadLibrary() {
+  setLibraryState("loading");
   try {
     const [libraryResponse, dueResponse] = await Promise.all([
       apiFetch("/api/library?limit=100"),
@@ -638,10 +642,27 @@ async function loadLibrary() {
     if (!libraryResponse.ok) throw new Error(libraryPayload.error || "词库加载失败");
     libraryWords = libraryPayload.words || [];
     dueWords = dueResponse.ok ? duePayload.words || [] : [];
+    setLibraryState("ready");
     updateLibraryUI();
   } catch (error) {
-    showToast(error.message);
+    setLibraryState("error");
+    $("#libraryList").innerHTML = "";
+    $("#libraryEmpty").hidden = true;
   }
+}
+
+function setLibraryState(state) {
+  const stateCard = $("#libraryState");
+  if (state === "ready") {
+    stateCard.hidden = true;
+    return;
+  }
+  stateCard.hidden = false;
+  $("#retryLibrary").hidden = state !== "error";
+  $("#libraryStateTitle").textContent = state === "error" ? "帧词库暂时没加载出来" : "正在加载帧词库";
+  $("#libraryStateMessage").textContent = state === "error"
+    ? "你的识别结果还在。检查网络后可以直接重试，不需要重新识别。"
+    : "正在找回你收藏过的画面和表达。";
 }
 
 function updateLibraryUI() {
@@ -684,9 +705,21 @@ function openReview(word) {
   $("#reviewLevel").textContent = `${word.detail?.cefr || "FRAME WORD"} · ${word.detail?.kind || "表达"}`;
   $("#reviewMeaning").textContent = word.source_summary?.text || word.meaning;
   $("#reviewAnswer").textContent = "看着这段画面，你还记得怎么说吗？";
-  $("#reviewProgress").textContent = dueWords.includes(word) ? "今天的待复习卡" : "刚收藏，马上复习一次";
+  $("#reviewProgress").textContent = dueWords.some((item) => item.id === word.id) ? "今天的待复习卡" : "刚收藏，马上复习一次";
+  $(".review-actions").hidden = false;
+  $("#reviewResult").hidden = true;
   $("#reviewPanel").classList.add("open");
   $("#reviewPanel").setAttribute("aria-hidden", "false");
+}
+
+function closeReview() {
+  const completed = !$("#reviewResult").hidden;
+  $("#reviewPanel").classList.remove("open");
+  $("#reviewPanel").setAttribute("aria-hidden", "true");
+  if (completed) {
+    reviewTarget = null;
+    updateLibraryUI();
+  }
 }
 
 async function submitReview(action) {
@@ -700,14 +733,16 @@ async function submitReview(action) {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || "复习记录失败");
     $("#reviewAnswer").textContent = reviewTarget.text;
-    showToast(action === "remember" ? `${reviewTarget.text} · ${payload.next_review_in_days} 天后再见` : `${reviewTarget.text} · 明天再看看`);
+    $("#reviewFeedback").textContent = action === "remember"
+      ? `记住了：${reviewTarget.text}。这张画面会在 ${payload.next_review_in_days} 天后再次出现。`
+      : `答案是 ${reviewTarget.text}。没关系，这张画面明天会再来一次。`;
+    $(".review-actions").hidden = true;
+    $("#reviewResult").hidden = false;
     dueWords = dueWords.filter((word) => word.id !== reviewTarget.id);
     libraryWords = libraryWords.map((word) => word.id === reviewTarget.id ? { ...word, ...payload.word } : word);
-    reviewTarget = null;
     updateLibraryUI();
-    setTimeout(() => { $("#reviewPanel").classList.remove("open"); }, 700);
   } catch (error) {
-    showToast(error.message);
+    showToast("复习结果暂时没保存，请再试一次");
   } finally {
     $$(".review-actions button").forEach((button) => button.disabled = false);
   }
@@ -735,6 +770,15 @@ function speakCurrentWord() {
 function speakCurrentExample() {
   if (!currentItem?.detail?.context) return showToast("例句生成后即可朗读");
   speakText(currentItem.detail.context, "画面例句");
+}
+
+function speakReviewAnswer() {
+  if (!reviewTarget?.text) return;
+  const language = reviewTarget.language;
+  const previousLanguage = currentLang;
+  if (languageConfig[language]) currentLang = language;
+  speakText(reviewTarget.text, "词卡答案");
+  currentLang = previousLanguage;
 }
 
 function escapeHtml(value) {
@@ -847,10 +891,13 @@ $("#blacklistButton").addEventListener("click", () => {
 $("#libraryButton").addEventListener("click", openLibrary);
 $("#closeLibrary").addEventListener("click", closeLibrary);
 $("#goSearch").addEventListener("click", closeLibrary);
+$("#retryLibrary").addEventListener("click", loadLibrary);
 $("#startReview").addEventListener("click", () => openReview(dueWords[0] || reviewTarget));
-$("#closeReview").addEventListener("click", () => $("#reviewPanel").classList.remove("open"));
+$("#closeReview").addEventListener("click", closeReview);
 $("#reviewRemember").addEventListener("click", () => submitReview("remember"));
 $("#reviewAgain").addEventListener("click", () => submitReview("again"));
+$("#reviewSpeak").addEventListener("click", speakReviewAnswer);
+$("#reviewFinish").addEventListener("click", closeReview);
 $("#closeBlacklist").addEventListener("click", () => {
   $("#blacklistPanel").classList.remove("open");
   $("#blacklistPanel").setAttribute("aria-hidden", "true");
@@ -873,7 +920,7 @@ $("#logoutButton").addEventListener("click", () => {
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
-    if ($("#reviewPanel").classList.contains("open")) $("#reviewPanel").classList.remove("open");
+    if ($("#reviewPanel").classList.contains("open")) closeReview();
     else if ($("#libraryPanel").classList.contains("open")) closeLibrary();
     else if (wordSheet.classList.contains("open")) closeWordSheet();
     return;
@@ -894,5 +941,6 @@ updateBlacklistUI();
 updateTimeline();
 ensureLearningSession().then(() => loadLibrary()).catch(() => {
   $("#libraryCount").textContent = "!";
+  setLibraryState("error");
 });
 window.addEventListener("pagehide", stopCamera);

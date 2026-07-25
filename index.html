@@ -158,6 +158,11 @@
               <div><strong id="sceneCount">0</strong><small>留下画面</small></div>
             </div>
             <button class="start-review" id="startReview">开始复习</button>
+            <div class="library-state" id="libraryState" role="status" hidden>
+              <span>↻</span>
+              <div><b id="libraryStateTitle">正在加载帧词库</b><small id="libraryStateMessage">正在找回你收藏过的画面和表达。</small></div>
+              <button id="retryLibrary" hidden>重新加载</button>
+            </div>
             <div class="library-list" id="libraryList"></div>
             <div class="library-empty" id="libraryEmpty">
               <span>✦</span><b>你还没有帧词卡</b><small>从一段视频里暂停一帧，收下第一个“看见却不会说”的表达。</small>
@@ -173,6 +178,10 @@
             <img id="reviewImage" alt="词卡对应的原画面" />
             <div class="review-copy"><span id="reviewLevel">FRAME WORD</span><p id="reviewMeaning"></p><h2 id="reviewAnswer">想一想，它怎么说？</h2></div>
             <div class="review-actions"><button class="again" id="reviewAgain">再看看</button><button class="remember" id="reviewRemember">我认识</button></div>
+            <div class="review-result" id="reviewResult" hidden>
+              <p id="reviewFeedback"></p>
+              <div><button id="reviewSpeak">♪ 朗读答案</button><button class="review-finish" id="reviewFinish">完成复习</button></div>
+            </div>
           </section>
 
           <div class="toast" id="toast"></div>
