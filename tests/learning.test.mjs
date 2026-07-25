@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
-const { cleanText, cleanWord, readFrameImage, reviewSchedule } = require("../api/_lib/learning");
+const { cleanText, cleanWord, readFrameImage, reviewSchedule, normalizeLookupTerm } = require("../api/_lib/learning");
 
 describe("learning data boundaries", () => {
   it("normalizes a complete saved word", () => {
@@ -41,5 +41,11 @@ describe("learning data boundaries", () => {
 
   it("uses spaced repetition intervals with a 60-day cap", () => {
     expect([1, 2, 3, 4, 5, 99].map(reviewSchedule)).toEqual([3, 7, 14, 30, 60, 60]);
+  });
+
+  it("normalizes a selected sentence term without swallowing punctuation", () => {
+    expect(normalizeLookupTerm("  “twinkling,” ")).toBe("twinkling");
+    expect(normalizeLookupTerm(" indoor   setting ")).toBe("indoor setting");
+    expect(normalizeLookupTerm("...")).toBe("");
   });
 });
