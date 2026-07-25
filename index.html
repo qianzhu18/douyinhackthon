@@ -46,6 +46,7 @@
               </button>
               <button class="header-button" id="uploadButton">＋ 视频</button>
               <button class="camera-button" id="cameraButton">◉ 相机</button>
+              <button class="library-button" id="libraryButton">词库 <span id="libraryCount">0</span></button>
               <button class="blacklist-button" id="blacklistButton" aria-label="管理黑名单">⊘ <span id="blacklistCount">0</span></button>
               <button class="logout-button" id="logoutButton" hidden aria-label="退出体验">退出</button>
             </div>
@@ -138,6 +139,34 @@
               <span>⊘</span><b>黑名单还是空的</b><small>在学习点详情中选择“不再出现”。</small>
             </div>
             <button class="clear-blacklist" id="clearBlacklist" hidden>全部恢复</button>
+          </section>
+
+          <section class="library-panel" id="libraryPanel" aria-hidden="true">
+            <header>
+              <button id="closeLibrary" aria-label="关闭">‹</button>
+              <div><b>我的帧词库</b><small>从你亲眼见过的画面里，带走表达</small></div>
+            </header>
+            <div class="library-metrics">
+              <div><strong id="dueCount">0</strong><small>今日待复习</small></div>
+              <div><strong id="libraryTotal">0</strong><small>已收集表达</small></div>
+              <div><strong id="sceneCount">0</strong><small>留下画面</small></div>
+            </div>
+            <button class="start-review" id="startReview">开始复习</button>
+            <div class="library-list" id="libraryList"></div>
+            <div class="library-empty" id="libraryEmpty">
+              <span>✦</span><b>你还没有帧词卡</b><small>从一段视频里暂停一帧，收下第一个“看见却不会说”的表达。</small>
+              <button id="goSearch">去搜索这一帧</button>
+            </div>
+          </section>
+
+          <section class="review-panel" id="reviewPanel" aria-hidden="true">
+            <header>
+              <button id="closeReview" aria-label="返回词库">‹</button>
+              <div><b>看着这一帧，你还记得吗？</b><small id="reviewProgress">画面复习</small></div>
+            </header>
+            <img id="reviewImage" alt="词卡对应的原画面" />
+            <div class="review-copy"><span id="reviewLevel">FRAME WORD</span><p id="reviewMeaning"></p><h2 id="reviewAnswer">想一想，它怎么说？</h2></div>
+            <div class="review-actions"><button class="again" id="reviewAgain">再看看</button><button class="remember" id="reviewRemember">我认识</button></div>
           </section>
 
           <div class="toast" id="toast"></div>
