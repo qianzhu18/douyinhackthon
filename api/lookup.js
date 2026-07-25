@@ -54,6 +54,20 @@ function validLookup(result) {
     .every((key) => typeof result?.[key] === "string" && result[key].trim() && result[key].length <= 500);
 }
 
+function completeLookup(result, fallback) {
+  if (!result || typeof result !== "object" || typeof result.meaning !== "string" || !result.meaning.trim()) return null;
+  const completed = {
+    word: String(result.word || fallback.term).trim().slice(0, 160),
+    normalized: String(result.normalized || result.word || fallback.term).trim().slice(0, 160),
+    phonetic: String(result.phonetic || "系统发音").trim().slice(0, 160),
+    meaning: result.meaning.trim().slice(0, 200),
+    part_of_speech: String(result.part_of_speech || "word").trim().slice(0, 80),
+    example: String(result.example || fallback.sentence || fallback.term).trim().slice(0, 500),
+    translation: String(result.translation || fallback.sentenceTranslation || result.meaning).trim().slice(0, 500)
+  };
+  return validLookup(completed) ? completed : null;
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") return json(res, 405, { error: "仅支持 POST 请求" });
   const identity = await authenticate(req, res);
@@ -73,54 +87,59 @@ module.exports = async function handler(req, res) {
     if (identity.user && !await consumeQuota(identity.user.id, "context_lookup", Number(process.env.DAILY_LOOKUP_LIMIT || 100))) {
       return json(res, 429, { error: "今日句中查词次数已用完，请明天再来" });
     }
-    const response = await fetch(`${BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.STEPFUN_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        reasoning_effort: "low",
-        temperature: 0.1,
-        max_tokens: 650,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: [
-              `你是${LANGUAGES[language].name}语境词典。`,
-              "结合用户给出的完整例句解释被选择的词或短语，不要脱离语境猜测。",
-              "只返回 JSON，不要 Markdown。",
-              `严格遵循 JSON Schema：${JSON.stringify(lookupSchema)}`
-            ].join("\n")
-          },
-          {
-            role: "user",
-            content: [
-              `选择内容：${term}`,
-              `原例句：${sentence || "未提供"}`,
-              `原句翻译：${sentenceTranslation || "未提供"}`,
-              `学习难度：${LEVELS[level]}`,
-              "word 保留原句中的自然形式；normalized 给出适合词典和收藏的原形；meaning 是本句中的简体中文含义；",
-              "phonetic 给出发音；part_of_speech 使用英文词性；example 给出一个短而自然的新例句；translation 是新例句的简体中文翻译。"
-            ].join("\n")
-          }
-        ]
-      }),
-      signal: AbortSignal.timeout(20000)
-    });
-    const responseText = await response.text();
-    let payload;
-    try { payload = JSON.parse(responseText); } catch { payload = null; }
-    if (!response.ok) {
-      return json(res, response.status === 429 ? 429 : 502, {
-        error: response.status === 429 ? "查词请求较多，请稍后再试" : "暂时没有查到这个词"
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await fetch(`${BASE_URL}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.STEPFUN_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          reasoning_effort: "low",
+          temperature: 0.1,
+          max_tokens: 650,
+          response_format: { type: "json_object" },
+          messages: [
+            {
+              role: "system",
+              content: [
+                `你是${LANGUAGES[language].name}语境词典。`,
+                "结合用户给出的完整例句解释被选择的词或短语，不要脱离语境猜测。",
+                "只返回 JSON，不要 Markdown。",
+                `严格遵循 JSON Schema：${JSON.stringify(lookupSchema)}`
+              ].join("\n")
+            },
+            {
+              role: "user",
+              content: [
+                `选择内容：${term}`,
+                `原例句：${sentence || "未提供"}`,
+                `原句翻译：${sentenceTranslation || "未提供"}`,
+                `学习难度：${LEVELS[level]}`,
+                "word 保留原句中的自然形式；normalized 给出适合词典和收藏的原形；meaning 是本句中的简体中文含义；",
+                "phonetic 给出发音；part_of_speech 使用英文词性；example 给出一个短而自然的新例句；translation 是新例句的简体中文翻译。"
+              ].join("\n")
+            }
+          ]
+        }),
+        signal: AbortSignal.timeout(20000)
       });
+      const responseText = await response.text();
+      let payload;
+      try { payload = JSON.parse(responseText); } catch { payload = null; }
+      if (!response.ok) {
+        if (response.status === 429) return json(res, 429, { error: "查词请求较多，请稍后再试" });
+        if (attempt === 1) return json(res, 502, { error: "暂时没有查到这个词" });
+        continue;
+      }
+      const result = completeLookup(
+        parseModelJson(payload?.choices?.[0]?.message?.content),
+        { term, sentence, sentenceTranslation }
+      );
+      if (result) return json(res, 200, result);
     }
-    const result = parseModelJson(payload?.choices?.[0]?.message?.content);
-    if (!validLookup(result)) return json(res, 502, { error: "暂时没有查到这个词" });
-    return json(res, 200, result);
+    return json(res, 502, { error: "暂时没有查到这个词" });
   } catch (error) {
     return json(res, 500, {
       error: error?.name === "TimeoutError" ? "查词超时，请再试一次" : "句中查词暂时不可用"
