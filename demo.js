@@ -53,6 +53,10 @@ let libraryWords = [];
 let dueWords = [];
 let reviewTarget = null;
 
+function getLegacyAccessCode() {
+  return localStorage.getItem(STORAGE_ACCESS) || "";
+}
+
 const levelConfig = {
   beginner: { label: "A1–A2", name: "基础" },
   intermediate: { label: "B1–B2", name: "进阶" },
@@ -108,7 +112,16 @@ async function ensureLearningSession() {
           return cached;
         }
       } catch { /* ignored */ }
-      return startAnonymousSession();
+      try {
+        return await startAnonymousSession();
+      } catch (error) {
+        // Do not break the already-working small-scope demo while an admin is
+        // enabling anonymous Auth. Legacy access remains analysis-only; the
+        // cloud library correctly continues to require a real user identity.
+        const code = getLegacyAccessCode();
+        if (code) return { legacy: true, accessCode: code };
+        throw error;
+      }
     })().catch((error) => {
       accountReady = null;
       throw error;
@@ -119,6 +132,12 @@ async function ensureLearningSession() {
 
 async function apiFetch(path, options = {}) {
   const session = await ensureLearningSession();
+  if (session.legacy) {
+    return fetch(path, {
+      ...options,
+      headers: { "X-Access-Code": session.accessCode, ...(options.headers || {}) }
+    });
+  }
   return fetch(path, {
     ...options,
     headers: { "Authorization": `Bearer ${session.access_token}`, ...(options.headers || {}) }
