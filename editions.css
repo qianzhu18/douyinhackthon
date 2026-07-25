@@ -136,7 +136,8 @@ section{position:relative}
 /* ——— LevelLens:同一帧,三副水平眼镜 ——— */
 .lens-card{--edge:rgba(246,168,200,.5)}
 .lens-switch{display:flex;gap:7px;padding:5px;border:1px solid rgba(255,255,255,.08);border-radius:999px;background:rgba(0,0,0,.25)}
-.lens-switch button{flex:1;height:36px;border-radius:999px;color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.06em;transition:background .25s,color .25s}
+.lens-switch button{flex:1;height:36px;border:1px solid rgba(255,255,255,.14);border-radius:999px;background:rgba(8,9,12,.72);color:rgba(255,255,255,.92);font-size:10px;font-weight:700;letter-spacing:.06em;text-shadow:0 1px 2px rgba(0,0,0,.36);transition:background .25s,color .25s,border-color .25s}
+.lens-switch button:hover,.lens-switch button:focus-visible{border-color:rgba(255,255,255,.48);background:rgba(255,255,255,.12);color:#fff;outline:none}
 .lens-switch button.active{background:var(--green);color:var(--ink)}
 .lens-words{margin-top:18px;display:flex;flex-direction:column;gap:10px}
 .lens-words>div{display:flex;flex-direction:column;gap:10px}
