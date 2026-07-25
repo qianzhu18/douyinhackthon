@@ -89,9 +89,10 @@ module.exports = async function handler(req, res) {
       },
       body: JSON.stringify({
         model: MODEL,
-        // step-3.5-flash can spend several hundred tokens reasoning before it
-        // emits JSON. A 300-token cap truncated the answer and leaked the raw
-        // provider payload into the UI.
+        // This is a short structured generation task. Low reasoning avoids
+        // spending the whole output budget before the JSON answer begins.
+        reasoning_effort: "low",
+        temperature: 0.2,
         max_tokens: 900,
         response_format: { type: "json_object" },
         messages: [
