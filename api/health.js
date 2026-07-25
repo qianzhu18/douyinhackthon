@@ -4,7 +4,9 @@ module.exports = async function handler(req, res) {
   if (req.method !== "GET") return methodNotAllowed(res, ["GET"]);
   const required = ["STEPFUN_API_KEY"];
   if (process.env.ALLOW_LEGACY_ACCESS_CODE !== "true") {
-    required.push("SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY");
+    required.push("SUPABASE_URL");
+    if (!(process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY)) required.push("SUPABASE_PUBLISHABLE_KEY");
+    if (!(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY)) required.push("SUPABASE_SECRET_KEY");
   }
   const missing = required.filter((name) => !process.env[name]);
   return json(res, missing.length ? 503 : 200, {

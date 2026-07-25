@@ -87,7 +87,7 @@ npx vercel dev
 4. Framework Preset 选择 **Other**。
 5. Build Command、Output Directory 保持为空。
 6. 在 **Environment Variables** 中添加 `STEPFUN_API_KEY`。
-7. 添加 `SUPABASE_URL`、`SUPABASE_ANON_KEY`、`SUPABASE_SERVICE_ROLE_KEY`。
+7. 添加 `SUPABASE_URL`、`SUPABASE_PUBLISHABLE_KEY`、`SUPABASE_SECRET_KEY`。
 8. 可选添加 `STEPFUN_VISION_MODEL`，默认值是 `step-1o-turbo-vision`。
 9. 可选添加 `STEPFUN_TEXT_MODEL`；不设置时复用 `STEPFUN_VISION_MODEL` 的纯文本能力。
 10. 可选添加 `STEPFUN_BASE_URL`。中国区默认是 `https://api.stepfun.com/v1`；国际区可设为 `https://api.stepfun.ai/v1`。

@@ -13,10 +13,10 @@ function supabaseUrl() {
 
 async function userFromToken(token) {
   const url = supabaseUrl();
-  const anonKey = process.env.SUPABASE_ANON_KEY;
-  if (!url || !anonKey) throw new Error("服务端尚未配置 Supabase Auth");
+  const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY;
+  if (!url || !publishableKey) throw new Error("服务端尚未配置 Supabase Auth");
   const response = await fetch(`${url}/auth/v1/user`, {
-    headers: { apikey: anonKey, Authorization: `Bearer ${token}` },
+    headers: { apikey: publishableKey, Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(8000)
   });
   if (!response.ok) return null;

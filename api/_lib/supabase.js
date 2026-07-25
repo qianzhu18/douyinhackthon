@@ -2,8 +2,8 @@ const { supabaseUrl } = require("./auth");
 
 function config() {
   const url = supabaseUrl();
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("服务端尚未配置 SUPABASE_URL 或 SUPABASE_SERVICE_ROLE_KEY");
+  const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("服务端尚未配置 SUPABASE_URL 或 SUPABASE_SECRET_KEY");
   return { url, key };
 }
 
