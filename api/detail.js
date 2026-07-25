@@ -1,4 +1,3 @@
-const crypto = require("crypto");
 const { authenticate } = require("./_lib/auth");
 const { consumeQuota } = require("./_lib/supabase");
 
@@ -40,15 +39,29 @@ function json(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-function safeEqual(left, right) {
-  const a = Buffer.from(String(left || ""));
-  const b = Buffer.from(String(right || ""));
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+function parseModelJson(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const cleaned = value.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  const candidates = [cleaned];
+  const first = cleaned.indexOf("{");
+  const last = cleaned.lastIndexOf("}");
+  if (first >= 0 && last > first) candidates.push(cleaned.slice(first, last + 1));
+  for (const candidate of candidates) {
+    try { return JSON.parse(candidate); } catch { /* try the next candidate */ }
+  }
+  return null;
 }
 
-function rawError(payload, fallback) {
-  if (typeof payload === "string" && payload) return payload;
-  try { return payload ? JSON.stringify(payload) : fallback; } catch { return fallback; }
+function validResult(result) {
+  return typeof result?.phonetic === "string"
+    && result.phonetic.length <= 160
+    && typeof result.context === "string"
+    && result.context.length <= 500
+    && typeof result.translation === "string"
+    && result.translation.length <= 500
+    && Array.isArray(result.tags)
+    && result.tags.length === 3
+    && result.tags.every((tag) => typeof tag === "string" && tag.length <= 100);
 }
 
 module.exports = async function handler(req, res) {
@@ -76,7 +89,10 @@ module.exports = async function handler(req, res) {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 300,
+        // step-3.5-flash can spend several hundred tokens reasoning before it
+        // emits JSON. A 300-token cap truncated the answer and leaked the raw
+        // provider payload into the UI.
+        max_tokens: 900,
         response_format: { type: "json_object" },
         messages: [
           {
@@ -90,36 +106,39 @@ module.exports = async function handler(req, res) {
           {
             role: "user",
             content: [
-              `学习点：${item.text}`,
-              `中文释义：${item.meaning}`,
+              `学习点：${item.text.trim().slice(0, 160)}`,
+              `中文释义：${item.meaning.trim().slice(0, 200)}`,
               `学习难度：${level}。${LEVELS[level]}`,
-              `画面描述：${summary?.target || ""} / ${summary?.zh || ""}`,
+              `画面描述：${String(summary?.target || "").slice(0, 300)} / ${String(summary?.zh || "").slice(0, 300)}`,
               "请给出简洁发音标注、一个符合画面的自然例句、例句中文翻译和三个常用搭配。",
               "phonetic、context、tags 使用目标语言；translation 使用简体中文。"
             ].join("\n")
           }
         ]
       }),
-      signal: AbortSignal.timeout(20000)
+      signal: AbortSignal.timeout(25000)
     });
 
     const responseText = await response.text();
     let payload;
     try { payload = JSON.parse(responseText); } catch { payload = responseText; }
-    if (!response.ok) return json(res, response.status, { error: rawError(payload, "详情生成失败") });
+    if (!response.ok) {
+      console.error("stepfun detail upstream error", response.status);
+      return json(res, response.status === 429 ? 429 : 502, {
+        error: response.status === 429 ? "详情生成请求较多，请稍后再试" : "词条详情暂时没有生成出来"
+      });
+    }
     const outputText = payload?.choices?.[0]?.message?.content;
-    if (!outputText) return json(res, 502, { error: rawError(payload, "模型未返回详情") });
-    let result;
-    try { result = JSON.parse(outputText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")); }
-    catch { return json(res, 502, { error: outputText }); }
-    const valid = typeof result.phonetic === "string"
-      && typeof result.context === "string"
-      && typeof result.translation === "string"
-      && Array.isArray(result.tags)
-      && result.tags.length === 3;
-    return valid ? json(res, 200, result) : json(res, 502, { error: outputText });
+    const result = parseModelJson(outputText);
+    if (!validResult(result)) {
+      console.error("stepfun detail invalid result", payload?.choices?.[0]?.finish_reason || "unknown");
+      return json(res, 502, { error: "词条详情暂时没有生成出来" });
+    }
+    return json(res, 200, result);
   } catch (error) {
     console.error("stepfun detail error", error);
-    return json(res, 500, { error: error?.message || String(error) });
+    return json(res, 500, {
+      error: error?.name === "TimeoutError" ? "详情生成超时，请稍后重试" : "详情生成暂时不可用"
+    });
   }
 };
