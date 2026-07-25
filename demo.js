@@ -82,12 +82,18 @@ function saveSession(session) {
   localStorage.setItem(STORAGE_SESSION, JSON.stringify(session));
 }
 
-async function startAnonymousSession() {
+async function loadSupabaseConfig() {
+  if (supabaseConfig?.supabaseUrl && supabaseConfig?.publishableKey) return supabaseConfig;
   const configResponse = await fetch("/api/client-config");
   supabaseConfig = await configResponse.json().catch(() => ({}));
   if (!configResponse.ok || !supabaseConfig.supabaseUrl || !supabaseConfig.publishableKey) {
     throw new Error(supabaseConfig.error || "学习账户服务暂不可用");
   }
+  return supabaseConfig;
+}
+
+async function startAnonymousSession() {
+  await loadSupabaseConfig();
   const response = await fetch(`${supabaseConfig.supabaseUrl}/auth/v1/signup`, {
     method: "POST",
     headers: { apikey: supabaseConfig.publishableKey, "Content-Type": "application/json" },
@@ -101,17 +107,44 @@ async function startAnonymousSession() {
   return payload;
 }
 
+async function refreshLearningSession(refreshToken) {
+  if (!refreshToken) throw new Error("没有可续期的学习账户");
+  await loadSupabaseConfig();
+  const response = await fetch(`${supabaseConfig.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+    method: "POST",
+    headers: { apikey: supabaseConfig.publishableKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: refreshToken })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.access_token) throw new Error("学习账户续期失败");
+  saveSession(payload);
+  return payload;
+}
+
 async function ensureLearningSession() {
-  if (learningSession?.access_token) return learningSession;
+  const now = Math.floor(Date.now() / 1000);
+  if (learningSession?.access_token && Number(learningSession.expires_at || 0) > now + 60) return learningSession;
+  if (learningSession?.refresh_token) {
+    learningSession = null;
+    accountReady = null;
+  }
   if (!accountReady) {
     accountReady = (async () => {
+      let cached = null;
       try {
-        const cached = JSON.parse(localStorage.getItem(STORAGE_SESSION) || "null");
+        cached = JSON.parse(localStorage.getItem(STORAGE_SESSION) || "null");
         if (cached?.access_token && Number(cached.expires_at || 0) > Math.floor(Date.now() / 1000) + 60) {
           learningSession = cached;
           return cached;
         }
       } catch { /* ignored */ }
+      if (cached?.refresh_token) {
+        try {
+          return await refreshLearningSession(cached.refresh_token);
+        } catch {
+          localStorage.removeItem(STORAGE_SESSION);
+        }
+      }
       try {
         return await startAnonymousSession();
       } catch (error) {
