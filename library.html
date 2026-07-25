@@ -19,6 +19,13 @@
     </header>
 
     <main class="lib-main">
+      <section class="lib-status" id="libStatus" role="status" aria-live="polite">
+        <span id="libStatusMark">↻</span>
+        <h1 id="libStatusTitle">正在找回你的帧词库</h1>
+        <p id="libStatusCopy">画面、表达和复习进度会保存在你的匿名学习账户里。</p>
+        <button id="libRetry" hidden>重新加载</button>
+      </section>
+
       <section class="lib-empty" id="libEmpty" hidden>
         <span class="empty-mark">帧</span>
         <h1>帧词库还是空的。</h1>
@@ -56,6 +63,7 @@
           <b id="reviewWord"></b>
           <span id="reviewMeta"></span>
           <p id="reviewMeaning"></p>
+          <button class="review-speak" id="reviewSpeak">♪ 朗读表达</button>
         </div>
         <button class="review-reveal" id="reviewReveal">显示表达</button>
         <div class="review-grade" id="reviewGrade" hidden>
@@ -65,7 +73,7 @@
       </div>
       <div class="review-done" id="reviewDone" hidden>
         <h2>今天的复习完成了。</h2>
-        <p>以后再见到它，你会知道怎么说。</p>
+        <p id="reviewDoneCopy">以后再见到它，你会知道怎么说。</p>
         <a class="primary-cta" href="/app">继续收集表达 →</a>
       </div>
     </section>
