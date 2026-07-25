@@ -149,6 +149,9 @@ a { color: inherit; text-decoration: none; }
 .review-answer b { display: block; font-size: 30px; letter-spacing: -.02em; }
 .review-answer span { color: var(--cyan); font-size: 11px; letter-spacing: .12em; }
 .review-answer p { margin-top: 8px; color: var(--muted); font-size: 14px; }
+.review-answer .review-context { max-width:540px;margin:18px auto 5px;color:var(--text);font-size:15px;line-height:1.6 }
+.review-context-translation { display:block;max-width:540px;margin:0 auto;color:var(--muted);font-size:12px;line-height:1.6 }
+.review-speech-actions { display:flex;justify-content:center;gap:8px;flex-wrap:wrap }
 .review-speak { margin-top:12px;padding:9px 16px;border-radius:18px;background:rgba(40,239,209,.1);color:var(--cyan);font-size:12px;font-weight:700 }
 .review-reveal {
   padding: 12px 30px; border-radius: 22px;

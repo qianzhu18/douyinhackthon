@@ -32,4 +32,10 @@ function reviewSchedule(reviewCount) {
   return days[Math.min(Math.max(0, reviewCount - 1), days.length - 1)];
 }
 
-module.exports = { cleanText, cleanWord, readFrameImage, reviewSchedule };
+function normalizeLookupTerm(value) {
+  return cleanText(value, 80)
+    .replace(/^[\s"'“”‘’()[\]{}.,!?;:，。！？；：、]+|[\s"'“”‘’()[\]{}.,!?;:，。！？；：、]+$/g, "")
+    .replace(/\s+/g, " ");
+}
+
+module.exports = { cleanText, cleanWord, readFrameImage, reviewSchedule, normalizeLookupTerm };

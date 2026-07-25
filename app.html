@@ -94,7 +94,7 @@
               <button id="flipCamera" type="button" hidden aria-label="切换前置或后置摄像头">↺ 切换镜头</button>
             </div>
             <div class="control-row">
-              <button id="muteButton"><span id="muteIcon">♪</span><b id="muteLabel">开启声音</b></button>
+              <button id="muteButton"><span id="muteIcon">♫</span><b id="muteLabel">氛围声已开</b></button>
               <small>点击画面或按空格暂停</small>
               <button id="replaceButton">更换视频</button>
             </div>
@@ -130,10 +130,35 @@
                 <strong id="meaningText">咖啡</strong>
                 <p id="contextText">This is a cup of freshly brewed coffee.</p>
                 <small id="translationText">这是一杯刚冲好的咖啡。</small>
+                <p class="context-hint" id="contextHint">点按或长按例句中的词，继续查词并收藏。</p>
                 <button class="retry-detail" id="retryDetail" hidden>重新生成详情</button>
               </div>
+              <section class="context-explorer" id="contextExplorer" hidden aria-live="polite">
+                <header>
+                  <span>从这句话继续学</span>
+                  <button id="closeContextExplorer" type="button" aria-label="收起句中词">×</button>
+                </header>
+                <div class="context-explorer-loading" id="contextExplorerLoading">
+                  <b id="contextLookupTitle">正在理解这个词…</b>
+                  <small>结合原画面和整句语境，不做孤立翻译。</small>
+                </div>
+                <div class="context-explorer-result" id="contextExplorerResult" hidden>
+                  <div class="context-word-row">
+                    <div><b id="contextWord"></b><small id="contextPhonetic"></small></div>
+                    <button id="speakContextWord" type="button" aria-label="朗读句中词">♪</button>
+                  </div>
+                  <strong id="contextMeaning"></strong>
+                  <p id="contextExample"></p>
+                  <small id="contextExampleTranslation"></small>
+                  <button class="save-context-word" id="saveContextWord" type="button">＋ 把这个词加入帧词库</button>
+                </div>
+                <div class="context-explorer-error" id="contextExplorerError" hidden>
+                  <p id="contextExplorerErrorText">暂时没有查到这个词。</p>
+                  <button id="retryContextLookup" type="button">重新查询</button>
+                </div>
+              </section>
               <div class="collocation-row" id="collocations"></div>
-              <p class="speech-note" id="speechNote">发音由当前设备的系统语音提供。</p>
+              <p class="speech-note" id="speechNote">系统语音支持单词和整句朗读；背景氛围声会在朗读时自动降低。</p>
             </div>
             <div class="word-sheet-footer">
               <button class="dismiss-word" id="dismissWordSheet">继续看这一帧</button>
@@ -186,7 +211,9 @@
             <div class="review-actions"><button class="again" id="reviewAgain">再看看</button><button class="remember" id="reviewRemember">我认识</button></div>
             <div class="review-result" id="reviewResult" hidden>
               <p id="reviewFeedback"></p>
-              <div><button id="reviewSpeak">♪ 朗读答案</button><button class="review-finish" id="reviewFinish">完成复习</button></div>
+              <p class="review-example" id="reviewExample" hidden></p>
+              <small class="review-translation" id="reviewTranslation" hidden></small>
+              <div><button id="reviewSpeak">♪ 朗读单词</button><button id="reviewSpeakExample">▶ 朗读例句</button><button class="review-finish" id="reviewFinish">完成复习</button></div>
             </div>
           </section>
 

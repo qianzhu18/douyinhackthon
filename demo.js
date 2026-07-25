@@ -29,6 +29,7 @@ const STORAGE_ACCESS = "frame-language-access";
 const STORAGE_LEVEL = "frame-language-level";
 const STORAGE_BLACKLIST = "frame-language-blacklist";
 const STORAGE_SESSION = "frame-language-supabase-session-v1";
+const STORAGE_SOUND = "frame-language-ambient-sound";
 const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
 
 let currentLang = "en";
@@ -54,6 +55,14 @@ let accountReady = null;
 let libraryWords = [];
 let dueWords = [];
 let reviewTarget = null;
+let contextLookup = null;
+let contextLookupTerm = "";
+let contextLookupToken = 0;
+let contextPressTimer = null;
+let soundEnabled = localStorage.getItem(STORAGE_SOUND) !== "off";
+let ambientContext = null;
+let ambientMaster = null;
+let ambientNodes = [];
 
 function getLegacyAccessCode() {
   return localStorage.getItem(STORAGE_ACCESS) || "";
@@ -70,6 +79,67 @@ function showToast(message) {
   toast.classList.add("visible");
   clearTimeout(showToast.timer);
   showToast.timer = setTimeout(() => toast.classList.remove("visible"), 1900);
+}
+
+function updateSoundUI() {
+  $("#muteLabel").textContent = soundEnabled ? "氛围声已开" : "开启氛围声";
+  $("#muteIcon").textContent = soundEnabled ? "♫" : "♪";
+  sceneVideo.muted = !soundEnabled || mediaMode === "camera";
+}
+
+async function startAmbient() {
+  if (!soundEnabled) return;
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) {
+    soundEnabled = false;
+    updateSoundUI();
+    return;
+  }
+  if (!ambientContext) {
+    ambientContext = new AudioContextClass();
+    ambientMaster = ambientContext.createGain();
+    ambientMaster.gain.value = 0.0001;
+    const filter = ambientContext.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = 820;
+    filter.Q.value = .4;
+    ambientMaster.connect(filter);
+    filter.connect(ambientContext.destination);
+    [196, 246.94, 293.66].forEach((frequency, index) => {
+      const oscillator = ambientContext.createOscillator();
+      const gain = ambientContext.createGain();
+      oscillator.type = index === 1 ? "triangle" : "sine";
+      oscillator.frequency.value = frequency / 2;
+      gain.gain.value = index === 1 ? .055 : .035;
+      oscillator.connect(gain);
+      gain.connect(ambientMaster);
+      oscillator.start();
+      ambientNodes.push(oscillator, gain);
+    });
+  }
+  if (ambientContext.state === "suspended") await ambientContext.resume();
+  ambientMaster.gain.cancelScheduledValues(ambientContext.currentTime);
+  ambientMaster.gain.linearRampToValueAtTime(.12, ambientContext.currentTime + 1.4);
+}
+
+function duckAmbient(ducked) {
+  if (!ambientContext || !ambientMaster) return;
+  ambientMaster.gain.cancelScheduledValues(ambientContext.currentTime);
+  ambientMaster.gain.linearRampToValueAtTime(ducked ? .025 : soundEnabled ? .12 : .0001, ambientContext.currentTime + .18);
+}
+
+async function toggleSound() {
+  soundEnabled = !soundEnabled;
+  localStorage.setItem(STORAGE_SOUND, soundEnabled ? "on" : "off");
+  updateSoundUI();
+  if (soundEnabled) {
+    await startAmbient();
+    showToast("已开启轻柔背景氛围声");
+  } else {
+    duckAmbient(false);
+    if (ambientContext?.state === "running") await ambientContext.suspend();
+    showToast("已关闭背景氛围声");
+  }
 }
 
 function formatTime(seconds) {
@@ -253,10 +323,9 @@ function loadVideo(file) {
   sceneImage.hidden = true;
   sceneVideo.hidden = false;
   sceneVideo.src = objectUrl;
-  sceneVideo.muted = true;
+  sceneVideo.muted = !soundEnabled;
   sceneVideo.loop = false;
-  $("#muteLabel").textContent = "开启声音";
-  $("#muteIcon").textContent = "♪";
+  updateSoundUI();
   $("#sourceBadge").textContent = file.name;
   $("#timelineRow").hidden = false;
   $("#cameraLive").hidden = true;
@@ -299,7 +368,7 @@ async function startCamera(facing = "environment", restoring = false) {
     $("#sourceBadge").textContent = "实时摄像头";
     $("#timelineRow").hidden = true;
     $("#cameraLive").hidden = false;
-    $("#muteButton").hidden = true;
+    $("#muteButton").hidden = false;
     $("#replaceButton").textContent = "选择视频";
     $("#welcomeTip b").textContent = "摄像头模式已开启";
     $("#welcomeTip small").textContent = "点击画面或按空格冻结当前帧";
@@ -488,17 +557,170 @@ function renderResult(result) {
   $("#retryAnalysis").hidden = false;
 }
 
+function sentenceSegments(text) {
+  if (!text) return [];
+  if ("Segmenter" in Intl) {
+    return [...new Intl.Segmenter(languageConfig[currentLang].locale, { granularity: "word" }).segment(text)]
+      .map((part) => ({ text: part.segment, isWord: part.isWordLike }));
+  }
+  return String(text).split(/(\s+|[.,!?;:，。！？；：、]+)/).filter(Boolean)
+    .map((part) => ({ text: part, isWord: /[\p{L}\p{N}]/u.test(part) }));
+}
+
+function renderContextSentence(text) {
+  const container = $("#contextText");
+  container.innerHTML = "";
+  sentenceSegments(text).forEach((part) => {
+    if (!part.isWord) {
+      container.append(document.createTextNode(part.text));
+      return;
+    }
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "context-token";
+    button.dataset.term = part.text;
+    button.textContent = part.text;
+    button.setAttribute("aria-label", `查询 ${part.text}`);
+    container.append(button);
+  });
+  $("#contextHint").hidden = !container.querySelector(".context-token");
+}
+
+function renderCollocations(tags = []) {
+  $("#collocations").innerHTML = tags.length
+    ? tags.map((tag) => `<button type="button" data-term="${escapeHtml(tag)}">${escapeHtml(tag)}</button>`).join("")
+    : "";
+}
+
+function closeContextExplorer() {
+  contextLookupToken++;
+  contextLookup = null;
+  contextLookupTerm = "";
+  $("#contextExplorer").hidden = true;
+  $$(".context-token").forEach((token) => token.classList.remove("active"));
+}
+
+function contextWordKey(item = contextLookup) {
+  return item ? `${item.language}:${item.concept}` : "";
+}
+
+function updateContextSaveButton() {
+  const saved = libraryWords.some((word) => `${word.language}:${word.concept}` === contextWordKey());
+  $("#saveContextWord").classList.toggle("saved", saved);
+  $("#saveContextWord").textContent = saved ? "✓ 已加入帧词库" : "＋ 把这个词加入帧词库";
+}
+
+async function openContextLookup(term) {
+  const cleanTerm = String(term || "").trim();
+  if (!cleanTerm || !currentItem?.detail?.context) return;
+  contextLookupTerm = cleanTerm;
+  contextLookup = null;
+  const token = ++contextLookupToken;
+  $("#contextExplorer").hidden = false;
+  $("#contextExplorerLoading").hidden = false;
+  $("#contextExplorerResult").hidden = true;
+  $("#contextExplorerError").hidden = true;
+  $("#contextLookupTitle").textContent = `正在理解 “${cleanTerm}”…`;
+  $$(".context-token").forEach((item) => item.classList.toggle("active", item.dataset.term === cleanTerm));
+  $("#contextExplorer").scrollIntoView({ block: "nearest", behavior: "smooth" });
+  try {
+    const response = await apiFetch("/api/lookup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        language: currentLang,
+        level: currentLevel,
+        term: cleanTerm,
+        sentence: currentItem.detail.context,
+        sentence_translation: currentItem.detail.translation
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "暂时没有查到这个词");
+    if (token !== contextLookupToken) return;
+    const normalized = String(payload.normalized || cleanTerm).trim().toLowerCase();
+    contextLookup = {
+      concept: `context:${normalized}`.slice(0, 80),
+      language: currentLang,
+      text: payload.word || cleanTerm,
+      meaning: payload.meaning,
+      cefr: currentItem.cefr,
+      kind: "context",
+      detail: {
+        phonetic: payload.phonetic,
+        context: currentItem.detail.context,
+        translation: currentItem.detail.translation,
+        exploration_example: payload.example,
+        exploration_translation: payload.translation,
+        part_of_speech: payload.part_of_speech,
+        cefr: currentItem.cefr,
+        kind: "context",
+        origin: "sentence"
+      }
+    };
+    $("#contextWord").textContent = contextLookup.text;
+    $("#contextPhonetic").textContent = `${payload.phonetic} · ${payload.part_of_speech}`;
+    $("#contextMeaning").textContent = payload.meaning;
+    $("#contextExample").textContent = payload.example;
+    $("#contextExampleTranslation").textContent = payload.translation;
+    $("#contextExplorerLoading").hidden = true;
+    $("#contextExplorerResult").hidden = false;
+    updateContextSaveButton();
+  } catch (error) {
+    if (token !== contextLookupToken) return;
+    $("#contextExplorerLoading").hidden = true;
+    $("#contextExplorerError").hidden = false;
+    $("#contextExplorerErrorText").textContent = error.message;
+  }
+}
+
+async function saveContextLookup() {
+  if (!contextLookup) return;
+  if (libraryWords.some((word) => `${word.language}:${word.concept}` === contextWordKey())) {
+    openLibrary();
+    return;
+  }
+  const item = contextLookup;
+  $("#saveContextWord").disabled = true;
+  $("#saveContextWord").textContent = "正在保存这张语境卡…";
+  try {
+    const response = await apiFetch("/api/library", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        word: item,
+        source_summary: `来自画面例句：${currentItem?.detail?.context || item.detail.context}`,
+        frame_image: currentFrame?.image
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "保存到帧词库失败");
+    libraryWords = [payload.word, ...libraryWords.filter((word) => `${word.language}:${word.concept}` !== contextWordKey(item))];
+    reviewTarget = payload.word;
+    updateLibraryUI();
+    updateContextSaveButton();
+    showToast(`已把 “${item.text}” 和原句一起收藏`);
+  } catch (error) {
+    showToast(error.message);
+    updateContextSaveButton();
+  } finally {
+    $("#saveContextWord").disabled = false;
+  }
+}
+
 async function openWordSheet(item) {
   currentItem = item;
+  closeContextExplorer();
   $("#wordType").textContent = kindLabels[item.kind] || "EXPRESSION · 表达";
   $("#wordText").textContent = item.text;
   $("#phonetic").textContent = item.detail?.phonetic || "正在生成详情…";
   $("#meaningText").textContent = item.meaning;
-  $("#contextText").textContent = item.detail?.context || "正在结合画面生成自然例句…";
+  if (item.detail?.context) renderContextSentence(item.detail.context);
+  else $("#contextText").textContent = "正在结合画面生成自然例句…";
   $("#translationText").textContent = item.detail?.translation || "请稍候";
-  $("#collocations").innerHTML = item.detail
-    ? item.detail.tags.map((tag) => `<button type="button">${escapeHtml(tag)}</button>`).join("")
-    : "<button type=\"button\">生成常用搭配中…</button>";
+  $("#contextHint").hidden = !item.detail?.context;
+  if (item.detail) renderCollocations(item.detail.tags);
+  else $("#collocations").innerHTML = "<button type=\"button\">生成常用搭配中…</button>";
   $("#retryDetail").hidden = true;
   // Saving the visual word card must never depend on a second model call.
   $("#saveWord").disabled = false;
@@ -527,10 +749,9 @@ async function openWordSheet(item) {
     item.detail = payload;
     if (currentItem !== item) return;
     $("#phonetic").textContent = payload.phonetic;
-    $("#contextText").textContent = payload.context;
+    renderContextSentence(payload.context);
     $("#translationText").textContent = payload.translation;
-    $("#collocations").innerHTML = payload.tags
-      .map((tag) => `<button type="button">${escapeHtml(tag)}</button>`).join("");
+    renderCollocations(payload.tags);
     $("#retryDetail").hidden = true;
     updateSaveButton();
   } catch {
@@ -547,6 +768,7 @@ async function openWordSheet(item) {
 }
 
 function closeWordSheet() {
+  closeContextExplorer();
   wordSheet.classList.remove("open");
   wordSheet.setAttribute("aria-hidden", "true");
   currentItem = null;
@@ -573,12 +795,13 @@ function saveBlacklist(items) {
 
 function blockCurrentItem() {
   if (!currentItem?.concept) return;
+  const blockedItem = currentItem;
   const items = getBlacklist();
-  if (!items.some((item) => item.concept === currentItem.concept)) {
+  if (!items.some((item) => item.concept === blockedItem.concept)) {
     items.push({
-      concept: currentItem.concept,
-      text: currentItem.text,
-      meaning: currentItem.meaning,
+      concept: blockedItem.concept,
+      text: blockedItem.text,
+      meaning: blockedItem.meaning,
       blockedAt: Date.now()
     });
     saveBlacklist(items);
@@ -586,7 +809,7 @@ function blockCurrentItem() {
   closeWordSheet();
   const result = currentFrame?.results[`${currentLang}:${currentLevel}`];
   if (result) renderResult(result);
-  showToast(`“${currentItem.text}”以后不再出现`);
+  showToast(`“${blockedItem.text}”以后不再出现`);
 }
 
 function restoreConcept(concept) {
@@ -753,6 +976,10 @@ function openReview(word) {
   $("#reviewImage").src = word.frame_url || currentFrame?.image || "/cafe-scene.jpg";
   $("#reviewLevel").textContent = `${word.detail?.cefr || "FRAME WORD"} · ${word.detail?.kind || "表达"}`;
   $("#reviewMeaning").textContent = word.source_summary?.text || word.meaning;
+  $("#reviewExample").textContent = word.detail?.context || "";
+  $("#reviewExample").hidden = true;
+  $("#reviewTranslation").textContent = word.detail?.translation || "";
+  $("#reviewTranslation").hidden = true;
   $("#reviewAnswer").textContent = "看着这段画面，你还记得怎么说吗？";
   $("#reviewProgress").textContent = dueWords.some((item) => item.id === word.id) ? "今天的待复习卡" : "刚收藏，马上复习一次";
   $(".review-actions").hidden = false;
@@ -782,6 +1009,8 @@ async function submitReview(action) {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || "复习记录失败");
     $("#reviewAnswer").textContent = reviewTarget.text;
+    $("#reviewExample").hidden = !reviewTarget.detail?.context;
+    $("#reviewTranslation").hidden = !reviewTarget.detail?.translation;
     $("#reviewFeedback").textContent = action === "remember"
       ? `记住了：${reviewTarget.text}。这张画面会在 ${payload.next_review_in_days} 天后再次出现。`
       : `答案是 ${reviewTarget.text}。没关系，这张画面明天会再来一次。`;
@@ -806,8 +1035,15 @@ function speakText(text, label) {
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = languageConfig[currentLang].locale;
   utterance.rate = .84;
-  utterance.onerror = () => showToast("当前设备不支持该语言发音");
-  utterance.onstart = () => showToast(`正在朗读${label}`);
+  utterance.onerror = () => {
+    duckAmbient(false);
+    showToast("当前设备不支持该语言发音");
+  };
+  utterance.onstart = () => {
+    duckAmbient(true);
+    showToast(`正在朗读${label}`);
+  };
+  utterance.onend = () => duckAmbient(false);
   speechSynthesis.speak(utterance);
 }
 
@@ -821,12 +1057,25 @@ function speakCurrentExample() {
   speakText(currentItem.detail.context, "画面例句");
 }
 
+function speakContextLookup() {
+  if (!contextLookup?.text) return;
+  speakText(contextLookup.text, "句中词");
+}
+
 function speakReviewAnswer() {
   if (!reviewTarget?.text) return;
   const language = reviewTarget.language;
   const previousLanguage = currentLang;
   if (languageConfig[language]) currentLang = language;
   speakText(reviewTarget.text, "词卡答案");
+  currentLang = previousLanguage;
+}
+
+function speakReviewExample() {
+  if (!reviewTarget?.detail?.context) return showToast("这张词卡还没有例句");
+  const previousLanguage = currentLang;
+  if (languageConfig[reviewTarget.language]) currentLang = reviewTarget.language;
+  speakText(reviewTarget.detail.context, "词卡例句");
   currentLang = previousLanguage;
 }
 
@@ -907,12 +1156,7 @@ document.addEventListener("click", (event) => {
   if (!event.target.closest("#languageMenu, #languageButton")) languageMenu.classList.remove("open");
   if (!event.target.closest("#levelMenu, #levelButton")) $("#levelMenu").classList.remove("open");
 });
-$("#muteButton").addEventListener("click", () => {
-  if (sceneVideo.hidden || mediaMode === "camera") return showToast("当前模式没有声音");
-  sceneVideo.muted = !sceneVideo.muted;
-  $("#muteLabel").textContent = sceneVideo.muted ? "开启声音" : "关闭声音";
-  $("#muteIcon").textContent = sceneVideo.muted ? "♪" : "♫";
-});
+$("#muteButton").addEventListener("click", toggleSound);
 $("#timeline").addEventListener("input", (event) => {
   if (!sceneVideo.hidden && sceneVideo.duration) {
     sceneVideo.currentTime = (Number(event.target.value) / 1000) * sceneVideo.duration;
@@ -928,6 +1172,39 @@ $("#saveWord").addEventListener("click", toggleSaveWord);
 $("#blockWord").addEventListener("click", blockCurrentItem);
 $("#speakWord").addEventListener("click", speakCurrentWord);
 $("#speakExample").addEventListener("click", speakCurrentExample);
+$("#closeContextExplorer").addEventListener("click", closeContextExplorer);
+$("#speakContextWord").addEventListener("click", speakContextLookup);
+$("#saveContextWord").addEventListener("click", saveContextLookup);
+$("#retryContextLookup").addEventListener("click", () => openContextLookup(contextLookupTerm));
+$("#contextText").addEventListener("pointerdown", (event) => {
+  const token = event.target.closest(".context-token");
+  if (!token) return;
+  clearTimeout(contextPressTimer);
+  contextPressTimer = setTimeout(() => {
+    token.dataset.longPressed = "true";
+    if (navigator.vibrate) navigator.vibrate(18);
+    openContextLookup(token.dataset.term);
+  }, 430);
+});
+$("#contextText").addEventListener("pointerup", () => clearTimeout(contextPressTimer));
+$("#contextText").addEventListener("pointercancel", () => clearTimeout(contextPressTimer));
+$("#contextText").addEventListener("pointerleave", () => clearTimeout(contextPressTimer));
+$("#contextText").addEventListener("contextmenu", (event) => {
+  if (event.target.closest(".context-token")) event.preventDefault();
+});
+$("#contextText").addEventListener("click", (event) => {
+  const token = event.target.closest(".context-token");
+  if (!token) return;
+  if (token.dataset.longPressed === "true") {
+    delete token.dataset.longPressed;
+    return;
+  }
+  openContextLookup(token.dataset.term);
+});
+$("#collocations").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-term]");
+  if (button) openContextLookup(button.dataset.term);
+});
 $("#retryDetail").addEventListener("click", () => {
   if (!currentItem) return;
   currentItem.detailLoading = false;
@@ -947,6 +1224,7 @@ $("#closeReview").addEventListener("click", closeReview);
 $("#reviewRemember").addEventListener("click", () => submitReview("remember"));
 $("#reviewAgain").addEventListener("click", () => submitReview("again"));
 $("#reviewSpeak").addEventListener("click", speakReviewAnswer);
+$("#reviewSpeakExample").addEventListener("click", speakReviewExample);
 $("#reviewFinish").addEventListener("click", closeReview);
 $("#closeBlacklist").addEventListener("click", () => {
   $("#blacklistPanel").classList.remove("open");
@@ -983,6 +1261,7 @@ document.addEventListener("keydown", (event) => {
 });
 
 $("#logoutButton").hidden = true;
+updateSoundUI();
 $("#levelLabel").textContent = levelConfig[currentLevel].label;
 $$("#levelMenu button").forEach((button) => {
   button.querySelector("i").textContent = button.dataset.level === currentLevel ? "✓" : "";
@@ -993,4 +1272,5 @@ ensureLearningSession().then(() => loadLibrary()).catch(() => {
   $("#libraryCount").textContent = "!";
   setLibraryState("error");
 });
+document.addEventListener("pointerdown", () => startAmbient().catch(() => {}), { once: true, capture: true });
 window.addEventListener("pagehide", stopCamera);

@@ -211,6 +211,10 @@ function renderReview() {
   $("#reviewWord").textContent = word.text;
   $("#reviewMeta").textContent = `${word.detail?.cefr || "FRAME WORD"} · ${kindLabels[word.detail?.kind] || "表达"}`;
   $("#reviewMeaning").textContent = word.meaning;
+  $("#reviewContext").textContent = word.detail?.context || "";
+  $("#reviewContext").hidden = !word.detail?.context;
+  $("#reviewContextTranslation").textContent = word.detail?.translation || "";
+  $("#reviewContextTranslation").hidden = !word.detail?.translation;
   $("#reviewAnswer").hidden = true;
   $("#reviewReveal").hidden = false;
   $("#reviewGrade").hidden = true;
@@ -280,6 +284,16 @@ function speakCurrentWord() {
   speechSynthesis.speak(utterance);
 }
 
+function speakCurrentExample() {
+  const word = queue[queueIndex];
+  if (!word?.detail?.context || !("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(word.detail.context);
+  utterance.lang = languageLocales[word.language] || "en-US";
+  utterance.rate = .84;
+  speechSynthesis.speak(utterance);
+}
+
 function exitReview() {
   $("#reviewMode").classList.remove("open");
   $("#reviewMode").setAttribute("aria-hidden", "true");
@@ -291,6 +305,7 @@ $("#reviewStart").addEventListener("click", () => startReview());
 $("#reviewExit").addEventListener("click", exitReview);
 $("#reviewReveal").addEventListener("click", revealAnswer);
 $("#reviewSpeak").addEventListener("click", speakCurrentWord);
+$("#reviewSpeakExample").addEventListener("click", speakCurrentExample);
 $("#gradeKnown").addEventListener("click", () => grade("remember"));
 $("#gradeAgain").addEventListener("click", () => grade("again"));
 document.addEventListener("keydown", (event) => {
