@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#080a0d" />
+    <meta property="og:title" content="这一帧怎么说" />
+    <meta property="og:description" content="暂停视频，让真实世界开口。" />
+    <meta property="og:image" content="/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <title>这一帧怎么说</title>
+    <link rel="stylesheet" href="/demo.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <aside class="story-panel">
+        <div class="brand-lockup"><span class="brand-mark">帧</span><span>这一帧怎么说</span></div>
+        <p class="eyebrow">VIDEO · VISION · LANGUAGE</p>
+        <h1>暂停一下，<br />让画面开口。</h1>
+        <p class="story-copy">上传一段自己的视频，在任何一帧停下。AI 会找到值得学的物品、人物与动作表达。</p>
+        <div class="journey">
+          <div class="journey-step active"><b>01</b><span>选择画面<small>上传视频或打开实时摄像头</small></span></div>
+          <div class="journey-step"><b>02</b><span>暂停画面<small>只发送压缩后的当前帧</small></span></div>
+          <div class="journey-step"><b>03</b><span>点击浮窗<small>听发音、看例句、收藏表达</small></span></div>
+        </div>
+        <div class="privacy-note"><span>✓</span><p><b>视频和摄像头流不会被上传</b><small>只有你暂停时的画面会用于语言分析。</small></p></div>
+      </aside>
+
+      <main class="phone" aria-label="视频语言学习播放器">
+        <div class="scene" id="scene" tabindex="0">
+          <img id="sceneImage" src="/cafe-scene.jpg" alt="咖啡师在咖啡店制作咖啡的示例画面" />
+          <video id="sceneVideo" playsinline preload="metadata" hidden></video>
+          <canvas id="frameCanvas" hidden></canvas>
+          <input id="mediaInput" type="file" accept="video/mp4,video/webm,video/quicktime,video/*" hidden />
+          <div class="scene-vignette"></div>
+          <div class="scene-grain"></div>
+
+          <header class="player-header">
+            <span class="source-badge" id="sourceBadge">示例画面</span>
+            <div class="header-actions">
+              <button class="level-pill" id="levelButton" aria-haspopup="true">
+                <span id="levelLabel">A1–A2</span><i>⌄</i>
+              </button>
+              <button class="language-pill" id="languageButton" aria-haspopup="true">
+                <span id="languageLabel">EN</span><i>⌄</i>
+              </button>
+              <button class="header-button" id="uploadButton">＋ 视频</button>
+              <button class="camera-button" id="cameraButton">◉ 相机</button>
+              <button class="blacklist-button" id="blacklistButton" aria-label="管理黑名单">⊘ <span id="blacklistCount">0</span></button>
+              <button class="logout-button" id="logoutButton" hidden aria-label="退出体验">退出</button>
+            </div>
+          </header>
+
+          <button class="pause-affordance" id="pauseButton" aria-label="暂停并分析当前画面">
+            <span>Ⅱ</span><small>暂停识别</small>
+          </button>
+
+          <div class="welcome-tip" id="welcomeTip">
+            <span>✦</span>
+            <div><b>先上传视频，或试试示例画面</b><small>点击画面暂停，AI 会识别当前帧</small></div>
+          </div>
+
+          <div class="analysis-state" id="analysisState" aria-live="polite">
+            <span class="analysis-spinner"></span>
+            <div><b id="analysisTitle">正在理解这一帧</b><small id="analysisMessage">识别画面中的核心学习点…</small></div>
+          </div>
+
+          <div class="tags-layer" id="tagsLayer" aria-label="当前画面的语言学习浮窗"></div>
+
+          <div class="language-menu" id="languageMenu" aria-hidden="true">
+            <button data-lang="en"><span><b>English</b><small>英语</small></span><i>✓</i></button>
+            <button data-lang="ja"><span><b>日本語</b><small>日语</small></span><i></i></button>
+            <button data-lang="ko"><span><b>한국어</b><small>韩语</small></span><i></i></button>
+          </div>
+
+          <div class="level-menu" id="levelMenu" aria-hidden="true">
+            <button data-level="beginner"><span><b>A1–A2 · 基础</b><small>高频物品、人物和基础动作</small></span><i>✓</i></button>
+            <button data-level="intermediate"><span><b>B1–B2 · 进阶</b><small>动作、搭配和场景短语</small></span><i></i></button>
+            <button data-level="advanced"><span><b>C1–C2 · 高阶</b><small>精确术语和地道表达</small></span><i></i></button>
+          </div>
+
+          <div class="player-controls" id="playerControls">
+            <div class="timeline-row" id="timelineRow">
+              <span id="currentTime">00:00</span>
+              <input id="timeline" type="range" min="0" max="1000" value="0" aria-label="视频进度" />
+              <span id="duration">00:00</span>
+            </div>
+            <div class="camera-live" id="cameraLive" hidden><span></span>摄像头实时预览 · 点击画面暂停</div>
+            <div class="control-row">
+              <button id="muteButton"><span id="muteIcon">♪</span><b id="muteLabel">开启声音</b></button>
+              <small>点击画面或按空格暂停</small>
+              <button id="replaceButton">更换视频</button>
+            </div>
+          </div>
+
+          <div class="learning-toolbar" id="learningToolbar">
+            <div class="learning-status">
+              <span class="paused-dot"></span>
+              <div><b>画面已暂停</b><small id="learningCount">等待分析</small></div>
+            </div>
+            <div class="paused-actions">
+              <button class="retry-button" id="retryAnalysis" hidden>重新分析</button>
+              <button class="continue-button" id="continueButton"><span>▶</span> 继续播放</button>
+            </div>
+          </div>
+
+          <section class="word-sheet" id="wordSheet" aria-hidden="true">
+            <div class="sheet-handle"></div>
+            <button class="sheet-close" id="closeWordSheet" aria-label="关闭">×</button>
+            <div class="word-heading">
+              <div>
+                <span class="word-type" id="wordType">NOUN · 名词</span>
+                <h2 id="wordText">coffee</h2>
+              <p><span id="phonetic">正在生成详情…</span><button class="speak-button" id="speakWord" aria-label="朗读">♪</button></p>
+              </div>
+              <div class="word-actions">
+                <button class="save-word" id="saveWord">＋ 收藏</button>
+                <button class="block-word" id="blockWord">⊘ 不再出现</button>
+              </div>
+            </div>
+            <div class="meaning-card">
+              <span>这一帧里</span>
+              <strong id="meaningText">咖啡</strong>
+              <p id="contextText">This is a cup of freshly brewed coffee.</p>
+              <small id="translationText">这是一杯刚冲好的咖啡。</small>
+            </div>
+            <div class="collocation-row" id="collocations"></div>
+            <p class="speech-note" id="speechNote">发音由当前设备的系统语音提供。</p>
+          </section>
+
+          <section class="blacklist-panel" id="blacklistPanel" aria-hidden="true">
+            <header>
+              <button id="closeBlacklist" aria-label="关闭">‹</button>
+              <div><b>不再出现的内容</b><small>跨英语、日语和韩语全局生效</small></div>
+            </header>
+            <div class="blacklist-list" id="blacklistList"></div>
+            <div class="blacklist-empty" id="blacklistEmpty">
+              <span>⊘</span><b>黑名单还是空的</b><small>在学习点详情中选择“不再出现”。</small>
+            </div>
+            <button class="clear-blacklist" id="clearBlacklist" hidden>全部恢复</button>
+          </section>
+
+          <div class="toast" id="toast"></div>
+        </div>
+      </main>
+    </div>
+
+    <div class="auth-modal" id="authModal" aria-hidden="true">
+      <form class="auth-card" id="authForm">
+        <button type="button" class="auth-close" id="authClose" aria-label="关闭">×</button>
+        <span class="auth-mark">帧</span>
+        <p class="eyebrow">PRIVATE PREVIEW</p>
+        <h2>输入体验码</h2>
+        <p>这是一个小范围体验版本，验证后即可上传视频。</p>
+        <label for="accessCode">体验码</label>
+        <input id="accessCode" name="accessCode" type="password" autocomplete="current-password" required />
+        <small class="auth-error" id="authError"></small>
+        <button class="auth-submit" id="authSubmit" type="submit">进入体验</button>
+      </form>
+    </div>
+
+    <script src="/demo.js"></script>
+  </body>
+</html>

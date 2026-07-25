@@ -1,0 +1,55 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/analyze.js": {
+      "maxDuration": 60
+    },
+    "api/auth.js": {
+      "maxDuration": 10
+    },
+    "api/detail.js": {
+      "maxDuration": 30
+    },
+    "api/health.js": {
+      "maxDuration": 10
+    },
+    "api/me.js": {
+      "maxDuration": 10
+    },
+    "api/settings.js": {
+      "maxDuration": 10
+    },
+    "api/learning-state.js": {
+      "maxDuration": 15
+    },
+    "api/challenge.js": {
+      "maxDuration": 30
+    }
+  },
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)\\.(jpg|png)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400"
+        }
+      ]
+    }
+  ]
+}
