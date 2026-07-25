@@ -41,6 +41,8 @@ let frameHistory = [];
 let mediaSession = 0;
 let objectUrl = null;
 let cameraStream = null;
+let cameraFacing = "environment";
+let cameraSwitching = false;
 let mediaMode = "sample";
 let isPaused = false;
 let isAnalyzing = false;
@@ -182,7 +184,7 @@ function requestUpload() {
 }
 
 function requestCamera() {
-  startCamera();
+  startCamera(cameraFacing);
 }
 
 function stopCamera() {
@@ -191,6 +193,35 @@ function stopCamera() {
     cameraStream = null;
   }
   if (sceneVideo.srcObject) sceneVideo.srcObject = null;
+  sceneVideo.classList.remove("front-camera");
+}
+
+async function requestCameraStream(facing) {
+  const video = {
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    facingMode: { exact: facing }
+  };
+  try {
+    return await navigator.mediaDevices.getUserMedia({ video, audio: false });
+  } catch (error) {
+    if (!["OverconstrainedError", "NotFoundError"].includes(error.name)) throw error;
+    return navigator.mediaDevices.getUserMedia({
+      video: { ...video, facingMode: { ideal: facing } },
+      audio: false
+    });
+  }
+}
+
+async function updateCameraControls() {
+  let videoInputs = [];
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    videoInputs = devices.filter((device) => device.kind === "videoinput");
+  } catch { /* switching remains hidden when devices cannot be enumerated */ }
+  $("#flipCamera").hidden = videoInputs.length < 2;
+  $("#cameraFacingLabel").textContent = `${cameraFacing === "user" ? "前置" : "后置"}镜头实时预览`;
+  sceneVideo.classList.toggle("front-camera", cameraFacing === "user");
 }
 
 function resetLearningState() {
@@ -243,10 +274,10 @@ function loadVideo(file) {
   };
 }
 
-async function startCamera() {
+async function startCamera(facing = "environment", restoring = false) {
   if (!navigator.mediaDevices?.getUserMedia) {
     showToast("当前浏览器或地址不支持摄像头");
-    return;
+    return false;
   }
   try {
     stopCamera();
@@ -254,14 +285,9 @@ async function startCamera() {
       URL.revokeObjectURL(objectUrl);
       objectUrl = null;
     }
-    cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-        facingMode: { ideal: "environment" }
-      },
-      audio: false
-    });
+    cameraStream = await requestCameraStream(facing);
+    const actualFacing = cameraStream.getVideoTracks()[0]?.getSettings?.().facingMode;
+    cameraFacing = ["user", "environment"].includes(actualFacing) ? actualFacing : facing;
     mediaSession++;
     mediaMode = "camera";
     resetLearningState();
@@ -278,13 +304,36 @@ async function startCamera() {
     $("#welcomeTip b").textContent = "摄像头模式已开启";
     $("#welcomeTip small").textContent = "点击画面或按空格冻结当前帧";
     await sceneVideo.play();
+    await updateCameraControls();
+    return true;
   } catch (error) {
     stopCamera();
+    if (!restoring && mediaMode === "camera") return startCamera(cameraFacing, true);
     const message = error.name === "NotAllowedError"
       ? "没有获得摄像头权限，请在浏览器设置中允许访问"
       : `摄像头启动失败：${error.message}`;
     showToast(message);
+    return false;
   }
+}
+
+async function switchCamera() {
+  if (cameraSwitching || mediaMode !== "camera") return;
+  cameraSwitching = true;
+  const previousFacing = cameraFacing;
+  const nextFacing = previousFacing === "environment" ? "user" : "environment";
+  $("#flipCamera").disabled = true;
+  $("#flipCamera").textContent = "切换中…";
+  const switched = await startCamera(nextFacing, true);
+  if (!switched) {
+    await startCamera(previousFacing, true);
+    showToast("这台设备暂时无法切换镜头");
+  } else {
+    showToast(`已切换到${cameraFacing === "user" ? "前置" : "后置"}镜头`);
+  }
+  $("#flipCamera").disabled = false;
+  $("#flipCamera").textContent = "↺ 切换镜头";
+  cameraSwitching = false;
 }
 
 function captureFrame() {
@@ -835,6 +884,7 @@ $("#continueButton").addEventListener("click", continuePlaying);
 $("#retryAnalysis").addEventListener("click", () => loadLanguageResult(true));
 $("#uploadButton").addEventListener("click", requestUpload);
 $("#cameraButton").addEventListener("click", requestCamera);
+$("#flipCamera").addEventListener("click", switchCamera);
 $("#replaceButton").addEventListener("click", requestUpload);
 mediaInput.addEventListener("change", () => {
   loadVideo(mediaInput.files[0]);

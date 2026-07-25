@@ -86,7 +86,10 @@
               <input id="timeline" type="range" min="0" max="1000" value="0" aria-label="视频进度" />
               <span id="duration">00:00</span>
             </div>
-            <div class="camera-live" id="cameraLive" hidden><span></span>摄像头实时预览 · 点击画面暂停</div>
+            <div class="camera-live" id="cameraLive" hidden>
+              <span></span><b id="cameraFacingLabel">后置镜头实时预览</b>
+              <button id="flipCamera" type="button" hidden aria-label="切换前置或后置摄像头">↺ 切换镜头</button>
+            </div>
             <div class="control-row">
               <button id="muteButton"><span id="muteIcon">♪</span><b id="muteLabel">开启声音</b></button>
               <small>点击画面或按空格暂停</small>
