@@ -876,7 +876,7 @@ function updateTimeline() {
 }
 
 scene.addEventListener("click", (event) => {
-  if (event.target.closest("button, input, .language-menu, .word-sheet, .learning-toolbar, .player-controls, .library-panel, .review-panel")) return;
+  if (event.target.closest("a, button, input, .language-menu, .word-sheet, .learning-toolbar, .player-controls, .library-panel, .review-panel")) return;
   if (!isPaused) pauseAndAnalyze();
 });
 $("#pauseButton").addEventListener("click", pauseAndAnalyze);
