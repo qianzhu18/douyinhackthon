@@ -26,6 +26,37 @@ async function request(path, options = {}) {
   return payload;
 }
 
+function storagePath(path) {
+  return String(path || "").split("/").filter(Boolean).map(encodeURIComponent).join("/");
+}
+
+async function uploadPrivateFrame(path, mimeType, body) {
+  return request(`/storage/v1/object/frame-cards/${storagePath(path)}`, {
+    method: "PUT",
+    headers: { "Content-Type": mimeType, "x-upsert": "true" },
+    body
+  });
+}
+
+async function signedFrameUrl(path, expiresIn = 3600) {
+  if (!path) return null;
+  const payload = await request(`/storage/v1/object/sign/frame-cards/${storagePath(path)}`, {
+    method: "POST",
+    body: JSON.stringify({ expiresIn })
+  });
+  const signedPath = payload?.signedURL || payload?.signedUrl;
+  if (!signedPath) return null;
+  return signedPath.startsWith("http") ? signedPath : `${supabaseUrl()}${signedPath}`;
+}
+
+async function recordEvent(userId, eventType, payload = {}) {
+  if (!userId) return;
+  await request("/rest/v1/learning_events", {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, event_type: eventType, payload })
+  });
+}
+
 async function consumeQuota(userId, bucket, limit) {
   if (!userId) return true;
   const payload = await request("/rest/v1/rpc/consume_ai_quota", {
@@ -35,4 +66,4 @@ async function consumeQuota(userId, bucket, limit) {
   return payload === true;
 }
 
-module.exports = { request, consumeQuota };
+module.exports = { request, consumeQuota, uploadPrivateFrame, signedFrameUrl, recordEvent };

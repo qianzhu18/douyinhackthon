@@ -13,7 +13,7 @@ module.exports = async function handler(req, res) {
     if (req.method === "GET") {
       const id = encodeURIComponent(userId);
       const [words, blocked, mastery] = await Promise.all([
-        request(`/rest/v1/saved_words?user_id=eq.${id}&select=concept,language,text,meaning,detail,created_at&order=created_at.desc&limit=500`),
+        request(`/rest/v1/saved_words?user_id=eq.${id}&select=concept,language,text,meaning,detail,source_summary,frame_path,created_at,review_due_at,review_interval_days,review_count,last_reviewed_at&order=created_at.desc&limit=500`),
         request(`/rest/v1/blocked_concepts?user_id=eq.${id}&select=concept,text,meaning,created_at&order=created_at.desc&limit=500`),
         request(`/rest/v1/concept_mastery?user_id=eq.${id}&select=concept,seen,best_score,expression,updated_at&order=updated_at.desc&limit=500`)
       ]);

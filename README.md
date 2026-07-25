@@ -14,7 +14,7 @@ Browser ── Supabase Auth ──> Bearer access token
               StepFun models │ Supabase Postgres
 ```
 
-- `SUPABASE_SERVICE_ROLE_KEY` 只存在 Vercel 环境变量中，绝不进入浏览器代码。
+- `SUPABASE_SECRET_KEY` 只存在 Vercel 环境变量中，绝不进入浏览器代码。
 - 画面仅在用户暂停时送往模型；原视频和摄像头流不会写入本项目数据库。
 - 每个模型接口按用户、按日原子计数，超过配额返回 `429`。
 - 画面识别默认使用 `step-1o-turbo-vision`；词汇详情、场景任务和评价默认使用更快的 `step-3.5-flash`。
@@ -22,7 +22,7 @@ Browser ── Supabase Auth ──> Bearer access token
 
 ## 首次部署
 
-1. 在 Supabase 创建项目，并在 SQL Editor 执行 [`supabase/migrations/20260726_initial.sql`](./supabase/migrations/20260726_initial.sql)。
+1. 在 Supabase 创建项目，并按文件名顺序在 SQL Editor 执行 [`supabase/migrations/`](./supabase/migrations/) 内的迁移。它会创建私有 `frame-cards` Storage bucket；只保存用户主动收藏的、压缩到 1MB 内的暂停截图。
 2. 在 Supabase Auth 配置站点 URL、允许的 Redirect URL，并启用计划使用的登录方式（邮件验证码或 OAuth）。
 3. 复制 `.env.example` 为 `.env.local`，填写 StepFun 与 Supabase 的环境变量。
 4. 在 Vercel 配置同名 Production / Preview 环境变量并部署；Node.js 版本使用 20+。
@@ -42,6 +42,8 @@ Authorization: Bearer <Supabase session.access_token>
 | `/api/me` | `GET` | 当前用户与学习设置 |
 | `/api/settings` | `GET`, `PUT` | 目标语言与难度 |
 | `/api/learning-state` | `GET`, `PUT` | 收藏、屏蔽概念与掌握度的跨端同步 |
+| `/api/library` | `GET`, `POST` | 画面生词库；保存时可附一张私有截图 |
+| `/api/review` | `GET`, `POST` | 获取到期卡片，并提交 `remember` / `again` 复习结果 |
 | `/api/analyze` | `POST` | 暂停帧识别，默认每天 30 次 |
 | `/api/detail` | `POST` | 单词详情，默认每天 100 次 |
 | `/api/challenge` | `POST` | `generate` 场景任务或 `evaluate` 口语回答，默认每天 30 次 |
@@ -114,7 +116,8 @@ npx vercel
 - `api/analyze.js`：Vercel 服务端视觉分析接口，带用户配额
 - `api/detail.js`：词汇详情接口，带用户配额
 - `api/me.js`、`api/settings.js`、`api/learning-state.js`：跨端用户学习档案 API
-- `supabase/migrations/20260726_initial.sql`：数据库、RLS 与原子用量计数
+- `api/library.js`、`api/review.js`：画面生词库与间隔复习 API（不绑定具体前端页面）
+- `supabase/migrations/`：数据库、RLS、私有截图 Storage 与原子用量计数
 - `cafe-scene.jpg`：演示场景图片
 - `og.png`：分享预览图
 - `vercel.json`：Vercel 路由与缓存配置

@@ -22,6 +22,12 @@
     "api/learning-state.js": {
       "maxDuration": 15
     },
+    "api/library.js": {
+      "maxDuration": 15
+    },
+    "api/review.js": {
+      "maxDuration": 10
+    },
     "api/challenge.js": {
       "maxDuration": 30
     }

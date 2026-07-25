@@ -1,6 +1,6 @@
 const crypto = require("crypto");
 const { authenticate } = require("./_lib/auth");
-const { consumeQuota } = require("./_lib/supabase");
+const { consumeQuota, recordEvent } = require("./_lib/supabase");
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MODEL = process.env.STEPFUN_VISION_MODEL || "step-1o-turbo-vision";
@@ -241,6 +241,9 @@ module.exports = async function handler(req, res) {
     }
     if (!isValidResult(result)) {
       return json(res, 502, { error: outputText });
+    }
+    if (identity.user) {
+      recordEvent(identity.user.id, "frame_analyzed", { language, level, item_count: result.items.length }).catch(() => {});
     }
     return json(res, 200, result);
   } catch (error) {
