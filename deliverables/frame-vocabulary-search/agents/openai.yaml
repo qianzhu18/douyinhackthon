@@ -1,0 +1,4 @@
+interface:
+  display_name: "Frame Vocabulary Search"
+  short_description: "Turn paused frames into personalized language learning"
+  default_prompt: "Use $frame-vocabulary-search to turn this paused frame into CEFR-appropriate expressions with save, review, and follow-up actions."
