@@ -934,8 +934,7 @@ async function toggleSaveWord() {
     persistLibraryCache();
     updateLibraryUI();
     updateSaveButton();
-    showToast("已加入帧词库，马上用这段画面复习一次");
-    openLibrary(true);
+    showToast("已加入帧词库");
   } catch (error) {
     showToast(error.message);
     updateSaveButton();
